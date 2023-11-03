@@ -13,8 +13,17 @@
 //for screenshots:
 #include "load_save_png.hpp"
 
+#ifdef __ANDROID__
+//libSDL not used on android(!)
+#else
 //Includes for libSDL:
 #include <SDL.h>
+#endif
+
+//for OpenXR:
+#include <openxr/openxr.h>
+#define XR_USE_GRAPHICS_API_OPENGL
+#include <openxr/openxr_platform.h>
 
 //...and for c++ standard library functions:
 #include <chrono>
@@ -22,6 +31,7 @@
 #include <stdexcept>
 #include <memory>
 #include <algorithm>
+#include <cstring>
 
 #ifdef _WIN32
 extern "C" { uint32_t GetACP(); }
@@ -42,7 +52,52 @@ int main(int argc, char **argv) {
 	try {
 #endif
 
-	//------------  initialization ------------
+	//------------ OpenXR init ------------
+
+	{
+		//OpenXR needs an "instance" to store global state:
+		XrInstance instance{XR_NULL_HANDLE};
+		XrInstanceCreateInfo create_info{XR_TYPE_INSTANCE_CREATE_INFO};
+
+		//with reference to openxr_program.cpp from openxr-sdk-source + the openxr specification
+
+		std::strcpy(create_info.applicationInfo.applicationName, "gp23 openxr demo");
+		create_info.applicationInfo.apiVersion = XR_CURRENT_API_VERSION;
+
+		//TODO: ON ANROID --> set create_info->next to point to an XrInstanceCreateInfoAndroidKHR structure
+		//  filled in as per openxr-sdk-source's platformplugin_android.cpp
+
+		std::vector< const char * > extensions{
+			XR_KHR_OPENGL_ENABLE_EXTENSION_NAME,
+			//TOOD: ON ANROID --> XR_KHR_ANDROID_CREATE_INSTANCE_EXTENSION_NAME
+		};
+
+		create_info.enabledExtensionCount = uint32_t(extensions.size());
+		create_info.enabledExtensionNames = extensions.data();
+
+		if (XrResult res = xrCreateInstance( &create_info, &instance);
+		    res != XR_SUCCESS) {
+			std::cerr << "Failed to create OpenXR instance: " << res << std::endl;
+			return 1;
+		}
+
+		//Query the instance to learn what runtime this is using:
+		XrInstanceProperties properties{XR_TYPE_INSTANCE_PROPERTIES};
+		if (XrResult res = xrGetInstanceProperties(instance, &properties);
+		    res != XR_SUCCESS) {
+			std::cerr << "Failed to get OpenXR instance properties: " << res << std::endl;
+			return 1;
+		}
+		std::cout << "OpenXR Runtime is '" << properties.runtimeName << "', version "
+			<< (properties.runtimeVersion >> 48)
+			<< "." << ((properties.runtimeVersion >> 32) & 0xffff)
+			<< "." << (properties.runtimeVersion & 0xffffffff)
+			<< std::endl;
+
+		//TODO, later: xrDestroyInstance !
+	}
+
+	//------------ initialization ------------
 
 	//Initialize SDL library:
 	SDL_Init(SDL_INIT_VIDEO);
@@ -63,7 +118,7 @@ int main(int argc, char **argv) {
 
 	//create window:
 	SDL_Window *window = SDL_CreateWindow(
-		"gp23 game2: enter the matr... virtual world", //TODO: remember to set a title for your game!
+		"gp23: openxr demo code", //TODO: remember to set a title for your game!
 		SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
 		1280, 720, //TODO: modify window size if you'd like
 		SDL_WINDOW_OPENGL

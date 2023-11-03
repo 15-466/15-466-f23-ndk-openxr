@@ -21,6 +21,7 @@ const maek = init_maek();
 //======================================================================
 
 const NEST_LIBS = `../nest-libs/${maek.OS}`;
+const OPENXR_SDK = `../openxr-sdk-source`;
 
 //set compile flags (these can also be overridden per-task using the "options" parameter):
 if (maek.OS === "windows") {
@@ -49,7 +50,9 @@ if (maek.OS === "windows") {
 		//include paths for nest libraries:
 		`-I${NEST_LIBS}/SDL2/include/SDL2`, `-D_THREAD_SAFE`, //the output of sdl-config --cflags
 		`-I${NEST_LIBS}/glm/include`,
-		`-I${NEST_LIBS}/libpng/include`
+		`-I${NEST_LIBS}/libpng/include`,
+		//OpenXR:
+		`-I${OPENXR_SDK}/include`
 	);
 	maek.options.LINKLibs.push(
 		//linker flags for nest libraries:
