@@ -21,7 +21,7 @@ const maek = init_maek();
 //======================================================================
 
 const NEST_LIBS = `../nest-libs/${maek.OS}`;
-const OPENXR_SDK = `../openxr-sdk-source`;
+const OPENXR_SDK = `../openxr-sdk`;
 
 //set compile flags (these can also be overridden per-task using the "options" parameter):
 if (maek.OS === "windows") {
@@ -58,7 +58,8 @@ if (maek.OS === "windows") {
 		//linker flags for nest libraries:
 		`-L${NEST_LIBS}/SDL2/lib`, `-lSDL2`, `-lm`, `-ldl`, `-lasound`, `-lpthread`, `-lX11`, `-lXext`, `-lpthread`, `-lrt`, `-lGL`, //the output of sdl-config --static-libs
 		`-L${NEST_LIBS}/libpng/lib`, `-lpng`,
-		`-L${NEST_LIBS}/zlib/lib`, `-lz`
+		`-L${NEST_LIBS}/zlib/lib`, `-lz`,
+		`-L${OPENXR_SDK}/build/linux/src/loader`, `-lopenxr_loader`,
 	);
 } else if (maek.OS === "macos") {
 	maek.options.CPPFlags.push(
@@ -87,6 +88,9 @@ let copies = [
 if (maek.OS === 'windows') {
 	copies.push( maek.COPY(`${NEST_LIBS}/SDL2/dist/SDL2.dll`, `dist/SDL2.dll`) );
 }
+if (maek.OS === 'linux') {
+	copies.push( maek.COPY(`${OPENXR_SDK}/build/linux/src/loader/libopenxr_loader.so.1`, `dist/libopenxr_loader.so.1`) );
+}
 
 //call rules on the maek object to specify tasks.
 // rules generally look like:
@@ -99,8 +103,9 @@ if (maek.OS === 'windows') {
 const game_names = [
 	maek.CPP('PlayMode.cpp'),
 	maek.CPP('main.cpp'),
-	maek.CPP('LitColorTextureProgram.cpp')
+	maek.CPP('LitColorTextureProgram.cpp'),
 	//, maek.CPP('ColorTextureProgram.cpp')  //not used right now, but you might want it
+	maek.CPP('XR.cpp')
 ];
 
 const common_names = [

@@ -16,6 +16,9 @@ struct PlayMode : Mode {
 	virtual void update(float elapsed) override;
 	virtual void draw(glm::uvec2 const &drawable_size) override;
 
+	//draw_helper called to draw both into game window and into VR views:
+	void draw_helper(glm::mat4 const &world_to_clip);
+
 	//----- game state -----
 
 	//input tracking:

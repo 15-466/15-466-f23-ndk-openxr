@@ -1,4 +1,6 @@
 #include "PlayMode.hpp"
+#include "XR.hpp"
+#include "xr_linear.h" //for projection matrix building helper
 
 #include "LitColorTextureProgram.hpp"
 
@@ -9,6 +11,7 @@
 #include "data_path.hpp"
 
 #include <glm/gtc/type_ptr.hpp>
+#include <glm/gtx/string_cast.hpp>
 
 #include <random>
 
@@ -168,9 +171,9 @@ void PlayMode::update(float elapsed) {
 }
 
 void PlayMode::draw(glm::uvec2 const &drawable_size) {
-	//update camera aspect ratio for drawable:
+	//update window's camera aspect ratio for drawable:
 	camera->aspect = float(drawable_size.x) / float(drawable_size.y);
-
+	
 	//set up light type and position for lit_color_texture_program:
 	// TODO: consider using the Light(s) in the scene to do this
 	glUseProgram(lit_color_texture_program->program);
@@ -179,16 +182,8 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 	glUniform3fv(lit_color_texture_program->LIGHT_ENERGY_vec3, 1, glm::value_ptr(glm::vec3(1.0f, 1.0f, 0.95f)));
 	glUseProgram(0);
 
-	glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
-	glClearDepth(1.0f); //1.0 is actually the default value to clear the depth buffer to, but FYI you can change it.
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-	glEnable(GL_DEPTH_TEST);
-	glDepthFunc(GL_LESS); //this is the default depth comparison function, but FYI you can change it.
-
-	GL_ERRORS(); //print any errors produced by this setup code
-
-	scene.draw(*camera);
+	//main scene drawing into the window:
+	draw_helper(camera->make_projection() * glm::mat4(camera->transform->make_world_to_local()));
 
 	{ //use DrawLines to overlay some text:
 		glDisable(GL_DEPTH_TEST);
@@ -211,4 +206,62 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 			glm::vec3(H, 0.0f, 0.0f), glm::vec3(0.0f, H, 0.0f),
 			glm::u8vec4(0xff, 0xff, 0xff, 0x00));
 	}
+
+	//----------------------------------------------
+
+	if (xr && xr->next_frame.should_render) {
+		//set up a transform representing the stage's position in the world:
+		// NOTE: state's "up" direction is +Y.
+		Scene::Transform stage;
+		stage.rotation = glm::quat_cast(glm::mat3(
+			glm::vec3(1.0f, 0.0f, 0.0f),
+			glm::vec3(0.0f, 0.0f, 1.0f),
+			glm::vec3(0.0f,-1.0f, 0.0f)
+		));
+		stage.position = glm::vec3(0.0f, 0.0f, 0.0f); //just center up for now
+		stage.scale = glm::vec3(10.0f); //let's make the player large!
+
+		for (auto const &view : xr->views) {
+			if (!view.current_framebuffer) continue; //weird bug but nothing to do, I guess
+
+			glBindFramebuffer(GL_DRAW_FRAMEBUFFER, view.current_framebuffer->fb);
+			glViewport(0, 0, xr->size.x, xr->size.y);
+
+			XrMatrix4x4f xr_proj;
+			XrMatrix4x4f_CreateProjectionFov(&xr_proj, GRAPHICS_OPENGL, view.fov, 0.1f, 0.0f);
+
+			glm::mat4 proj = glm::mat4(
+				xr_proj.m[0],  xr_proj.m[1],  xr_proj.m[2],  xr_proj.m[3],
+				xr_proj.m[4],  xr_proj.m[5],  xr_proj.m[6],  xr_proj.m[7],
+				xr_proj.m[8],  xr_proj.m[9],  xr_proj.m[10], xr_proj.m[11],
+				xr_proj.m[12], xr_proj.m[13], xr_proj.m[14], xr_proj.m[15]
+			);
+
+			Scene::Transform at;
+			at.parent = &stage;
+			at.position = glm::vec3(view.pose.position.x, view.pose.position.y, view.pose.position.z);
+			at.rotation = glm::quat(view.pose.orientation.w, view.pose.orientation.x, view.pose.orientation.y, view.pose.orientation.z);
+
+			draw_helper(proj * glm::mat4(at.make_world_to_local()));
+
+			glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+			glViewport(0, 0, drawable_size.x, drawable_size.y);
+		}
+	}
+
+	
+}
+void PlayMode::draw_helper(glm::mat4 const &world_to_clip) {
+
+	glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
+	glClearDepth(1.0f); //1.0 is actually the default value to clear the depth buffer to, but FYI you can change it.
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	glEnable(GL_DEPTH_TEST);
+	glDepthFunc(GL_LESS); //this is the default depth comparison function, but FYI you can change it.
+
+	GL_ERRORS(); //print any errors produced by this setup code
+
+	scene.draw(world_to_clip);
+
 }

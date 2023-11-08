@@ -20,10 +20,8 @@
 #include <SDL.h>
 #endif
 
-//for OpenXR:
-#include <openxr/openxr.h>
-#define XR_USE_GRAPHICS_API_OPENGL
-#include <openxr/openxr_platform.h>
+//for OpenXR stuff:
+#include "XR.hpp"
 
 //...and for c++ standard library functions:
 #include <chrono>
@@ -52,50 +50,6 @@ int main(int argc, char **argv) {
 	try {
 #endif
 
-	//------------ OpenXR init ------------
-
-	{
-		//OpenXR needs an "instance" to store global state:
-		XrInstance instance{XR_NULL_HANDLE};
-		XrInstanceCreateInfo create_info{XR_TYPE_INSTANCE_CREATE_INFO};
-
-		//with reference to openxr_program.cpp from openxr-sdk-source + the openxr specification
-
-		std::strcpy(create_info.applicationInfo.applicationName, "gp23 openxr demo");
-		create_info.applicationInfo.apiVersion = XR_CURRENT_API_VERSION;
-
-		//TODO: ON ANROID --> set create_info->next to point to an XrInstanceCreateInfoAndroidKHR structure
-		//  filled in as per openxr-sdk-source's platformplugin_android.cpp
-
-		std::vector< const char * > extensions{
-			XR_KHR_OPENGL_ENABLE_EXTENSION_NAME,
-			//TOOD: ON ANROID --> XR_KHR_ANDROID_CREATE_INSTANCE_EXTENSION_NAME
-		};
-
-		create_info.enabledExtensionCount = uint32_t(extensions.size());
-		create_info.enabledExtensionNames = extensions.data();
-
-		if (XrResult res = xrCreateInstance( &create_info, &instance);
-		    res != XR_SUCCESS) {
-			std::cerr << "Failed to create OpenXR instance: " << res << std::endl;
-			return 1;
-		}
-
-		//Query the instance to learn what runtime this is using:
-		XrInstanceProperties properties{XR_TYPE_INSTANCE_PROPERTIES};
-		if (XrResult res = xrGetInstanceProperties(instance, &properties);
-		    res != XR_SUCCESS) {
-			std::cerr << "Failed to get OpenXR instance properties: " << res << std::endl;
-			return 1;
-		}
-		std::cout << "OpenXR Runtime is '" << properties.runtimeName << "', version "
-			<< (properties.runtimeVersion >> 48)
-			<< "." << ((properties.runtimeVersion >> 32) & 0xffff)
-			<< "." << (properties.runtimeVersion & 0xffffffff)
-			<< std::endl;
-
-		//TODO, later: xrDestroyInstance !
-	}
 
 	//------------ initialization ------------
 
@@ -113,7 +67,8 @@ int main(int argc, char **argv) {
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+	//4.3 is *MIN SUPPORTED* by SteamVR's OpenXR
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
 
 	//create window:
@@ -154,8 +109,21 @@ int main(int argc, char **argv) {
 		}
 	}
 
+	int non_xr_swap_interval = SDL_GL_GetSwapInterval();
+
 	//Hide mouse cursor (note: showing can be useful for debugging):
 	//SDL_ShowCursor(SDL_DISABLE);
+
+	//------------ OpenXR init ------------
+
+	try {
+		xr = new XR(
+			window, context, //needed for SDL / desktop OpenGL mode
+			"gp23 OpenXR example", 1); //params are application name, application version
+	} catch (std::runtime_error &e) {
+		std::cerr << "Failed to initialize OpenXR: " << e.what() << std::endl;
+		return 1;
+	}
 
 	//------------ load assets --------------
 	call_load_functions();
@@ -217,11 +185,30 @@ int main(int argc, char **argv) {
 			if (!Mode::current) break;
 		}
 
+		//process xr events also (these are things like state changes):
+		if (xr) xr->poll_events();
+
+		if (xr && xr->running) {
+			xr->wait_frame(); //wait for the next frame that needs to be rendered
+			xr->begin_frame(); //indicate that rendering has started on this frame (NOTE: could *probably* do this later to lower latency if head position isn't important for update)
+		}
+
 		{ //(2) call the current mode's "update" function to deal with elapsed time:
-			auto current_time = std::chrono::high_resolution_clock::now();
-			static auto previous_time = current_time;
-			float elapsed = std::chrono::duration< float >(current_time - previous_time).count();
-			previous_time = current_time;
+			float elapsed;
+			{ //time update from system clock:
+				auto current_time = std::chrono::high_resolution_clock::now();
+				static auto previous_time = current_time;
+				elapsed = std::chrono::duration< float >(current_time - previous_time).count();
+				previous_time = current_time;
+			}
+
+			//override with time update from OpenXR (if available):
+			if (xr && xr->running) {
+				static auto previous_time = xr->next_frame.display_time;
+				auto current_time = xr->next_frame.display_time;
+				elapsed = (current_time - previous_time) * 1.0e-9; //nanoseconds -> seconds
+				previous_time = current_time;
+			}
 
 			//if frames are taking a very long time to process,
 			//lag to avoid spiral of death:
@@ -232,16 +219,36 @@ int main(int argc, char **argv) {
 		}
 
 		{ //(3) call the current mode's "draw" function to produce output:
-		
+			//(note: playmode has extra logic in here to deal with xr's views array)
 			Mode::current->draw(drawable_size);
 		}
 
+		if (xr && xr->running) {
+			xr->end_frame();
+		}
+
 		//Wait until the recently-drawn frame is shown before doing it all again:
-		SDL_GL_SwapWindow(window);
+		if (xr && xr->running) {
+			if (SDL_GL_GetSwapInterval() != 0) {
+				//NOTE: in xr mode actually don't wait!
+				SDL_GL_SetSwapInterval(0);
+				std::cout << "Note: XR is running, so don't wait on vsync." << std::endl;
+			}
+		} else {
+			if (SDL_GL_GetSwapInterval() != non_xr_swap_interval) {
+				SDL_GL_SetSwapInterval(non_xr_swap_interval);
+				std::cout << "Note: XR is not running, switching back to vsync." << std::endl;
+			}
+		}
+		SDL_GL_SwapWindow(window); //NOTE: should probably *not* do this while also trying to render to vr stuff because it will block(!)
 	}
 
-
 	//------------  teardown ------------
+
+	if (xr) {
+		delete xr;
+		xr = nullptr;
+	}
 
 	SDL_GL_DeleteContext(context);
 	context = 0;

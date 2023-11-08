@@ -45,12 +45,40 @@ $ cd ovr-openxr-sdk
 $ unzip ../downloads/ovr_openxr_mobile_sdk_57.0.zip #current version as of this writing
 ```
 
+For **desktop** VR use, grab Khronos's OpenXR loader: (see the README.md for more build info; like non-linux build instructions, required packages to install)
+```
+$ git clone https://github.com/KhronosGroup/OpenXR-SDK openxr-sdk
+$ cd openxr-sdk
+$ mkdir -p build/linux
+$ cd build/linux
+$ cmake -DDYNAMIC_LOADER=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo ../..
+```
+
 Once all of that is done you should have these three as siblings:
 ```
 15466-f23-ndk-openxr #this folder
 android-sdk #android sdk, tools, etc
 ovr-openxr-sdk #Meta's OpenXR SDK stuff
+openxr-sdk #Knrono's OpenXR SDK (optional; for desktop use)
 ```
+
+### SteamVR Linux Notes
+
+Getting "failed to determine active runtime file path for this environment":
+
+```
+$ mkdir -p .config/openxr/1
+$ ln -sf ~/.steam/steam/steamapps/common/SteamVR/steamxr_linux64.json ~/.config/openxr/1/active_runtime.json
+```
+
+Or you can just:
+```
+$ XR_RUNTIME_JSON=~/.steam/steam/steamapps/common/SteamVR/steamxr_linux64.json ./dist/game
+```
+(As per https://community.khronos.org/t/openxr-loader-how-to-select-runtime/108524)
+
+
+I found that opening SteamVR, then closing SteamVR but leaving steam open resulted in OpenXR calls succeeding. But not having steam open at all or having steamvr open both resulted in CreateInstance failing.
 
 ### Hardware
 
@@ -76,5 +104,9 @@ $ ./platform-tools/adb shell
 
 ## Building
 
-
 ...
+
+
+## OpenXR Notes
+
+
