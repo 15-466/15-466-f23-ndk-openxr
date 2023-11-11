@@ -5,9 +5,11 @@ dist/README-libpng.txt
 dist/game.ilk
 dist/game.pdb
 dist/SDL2.dll
+dist/libopenxr_loader.so.1
 dist/game
 dist/game.exe
 scenes/show-meshes*
 scenes/show-scene*
 *.blend[0-9]
 maek-cache.json
+dist-android/libgame.so
