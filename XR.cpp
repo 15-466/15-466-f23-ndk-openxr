@@ -1,8 +1,17 @@
 #include "XR.hpp"
 
 #include "GL.hpp"
-#include "gl_errors.hpp"
 
+#ifdef __ANDROID__
+//android stuff:
+#include <jni.h>
+
+#define XR_USE_GRAPHICS_API_OPENGL_ES
+#define XR_USE_PLATFORM_ANDROID
+#include <openxr/openxr_platform.h>
+
+#else
+//linux stuff:
 #include <X11/Xlib.h>
 #include <GL/glx.h>
 
@@ -10,9 +19,15 @@
 #define XR_USE_PLATFORM_XLIB
 #include <openxr/openxr_platform.h>
 
+#include <SDL_syswm.h>
+
+#endif
+
+#include "gl_errors.hpp"
+
+
 #include <openxr/openxr_reflection.h>
 
-#include <SDL_syswm.h>
 
 #include <iostream>
 #include <cstring>
@@ -24,7 +39,7 @@
 XR *xr = nullptr;
 
 XR::XR(
-	SDL_Window *window, SDL_GLContext context,
+	PlatformInfo const &platform,
 	std::string const &application_name,
 	uint32_t application_version,
 	std::string const &engine_name,
@@ -53,8 +68,12 @@ XR::XR(
 	//  filled in as per openxr-sdk-source's platformplugin_android.cpp
 
 	std::vector< const char * > extensions{
+		#ifdef __ANDROID__
+		XR_KHR_ANDROID_CREATE_INSTANCE_EXTENSION_NAME,
+		XR_KHR_OPENGL_ES_ENABLE_EXTENSION_NAME,
+		#else
 		XR_KHR_OPENGL_ENABLE_EXTENSION_NAME,
-		//TOOD: ON ANROID --> XR_KHR_ANDROID_CREATE_INSTANCE_EXTENSION_NAME
+		#endif
 	};
 
 	create_info.enabledExtensionCount = uint32_t(extensions.size());
@@ -113,8 +132,21 @@ XR::XR(
 	//NOTE: this is required before xrCreateSession(!)
 	//based on ovr-openxr-sdk's XrApp.cpp
 
-	//TODO: OpenGLES / android code(!)
-	{ //report OpenGL version support
+	{ //report OpenGL[ES} version support
+		#ifdef __ANDROID__
+		//OpenGL ES version:
+		PFN_xrGetOpenGLESGraphicsRequirementsKHR xrGetOpenGLESGraphicsRequirementsKHR = nullptr;
+		if (XrResult res = xrGetInstanceProcAddr(instance, "xrGetOpenGLESGraphicsRequirementsKHR",(PFN_xrVoidFunction*)(&xrGetOpenGLESGraphicsRequirementsKHR));
+		    res != XR_SUCCESS) {
+			throw std::runtime_error("Failed to get xrGetOpenGLESGraphicsRequrirementsKHR function pointer: " + to_string(res));
+		}
+		XrGraphicsRequirementsOpenGLESKHR graphics_requirements = {XR_TYPE_GRAPHICS_REQUIREMENTS_OPENGL_ES_KHR};
+		if (XrResult res = xrGetOpenGLESGraphicsRequirementsKHR(instance, system_id, &graphics_requirements);
+		    res != XR_SUCCESS) {
+			throw std::runtime_error("Failed to get OpenGLES graphics requirements: " + to_string(res));
+		}
+		#else
+		//OpenGL version:
 		PFN_xrGetOpenGLGraphicsRequirementsKHR xrGetOpenGLGraphicsRequirementsKHR = nullptr;
 		if (XrResult res = xrGetInstanceProcAddr(instance, "xrGetOpenGLGraphicsRequirementsKHR",(PFN_xrVoidFunction*)(&xrGetOpenGLGraphicsRequirementsKHR));
 		    res != XR_SUCCESS) {
@@ -125,6 +157,7 @@ XR::XR(
 		    res != XR_SUCCESS) {
 			throw std::runtime_error("Failed to get OpenGL graphics requirements: " + to_string(res));
 		}
+		#endif
 		std::cout << "OpenGL requirements:\n";
 		std::cout << "  min supported version: " << (graphics_requirements.minApiVersionSupported >> 48) << "." << ((graphics_requirements.minApiVersionSupported >> 32) & 0xffff) << "\n";
 		std::cout << "  max known supported version: " << (graphics_requirements.maxApiVersionSupported >> 48) << "." << ((graphics_requirements.maxApiVersionSupported >> 32) & 0xffff) << " (OpenXR spec says newer may work fine, though)\n";
@@ -142,11 +175,21 @@ XR::XR(
 				std::cerr << "WARNING: reported OpenGL version (" << major << "." << minor << ") is larger the maximum that OpenXR reports supporting. (Continuing, since this could still be okay.)" << std::endl;
 			}
 		}
-
-		//TODO, possibly: *actually* check this somewhere?
 	}
 
 	{ //----- session creation -----
+
+		#ifdef __ANDROID__
+		//set up XrGraphicsBindingOpenGLESAndroid structure (OpenGL ES on Android):
+		XrGraphicsBindingOpenGLESAndroidKHR binding{XR_TYPE_GRAPHICS_BINDING_OPENGL_ES_ANDROID_KHR};
+
+		binding.display = platform.egl_display;
+		binding.config = platform.egl_config;
+		binding.context = platform.egl_context;
+
+		#else //__ANDROID__
+		//set up XrGraphicsBindingOpenGLXlibKHR structure (OpenGL on Xlib bindings):
+
 		//getting window manager info as per example in SDL_syswm.h comment:
 		SDL_SysWMinfo info;
 		SDL_VERSION(&info.version);
@@ -193,6 +236,7 @@ XR::XR(
 		binding.glxFBConfig = fb_configs[0];
 		binding.glxDrawable = glXGetCurrentDrawable();
 		binding.glxContext = glx_context;
+		#endif
 
 
 		XrSessionCreateInfo create_info{XR_TYPE_SESSION_CREATE_INFO};
@@ -206,7 +250,12 @@ XR::XR(
 			throw std::runtime_error("Failed to create session: " + to_string(res));
 		}
 
+		#ifndef __ANDROID__
+		//on linux, must free fb_configs:
+
 		XFree(fb_configs); //"use XFree to free the memory returned by glXChooseFBConfig"
+
+		#endif //__ANDROID__
 	}
 
 	{ //create stage space:
@@ -298,7 +347,11 @@ XR::XR(
 				throw std::runtime_error("Failed to get swapchain length: " + to_string(res));
 			}
 			
+			#ifdef __ANDROID__
+			std::vector< XrSwapchainImageOpenGLESKHR > images(chain_length, XrSwapchainImageOpenGLESKHR{XR_TYPE_SWAPCHAIN_IMAGE_OPENGL_ES_KHR});
+			#else //__ANDROID__
 			std::vector< XrSwapchainImageOpenGLKHR > images(chain_length, XrSwapchainImageOpenGLKHR{XR_TYPE_SWAPCHAIN_IMAGE_OPENGL_KHR});
+			#endif //__ANDROID__
 			//actually fetch image structures:
 			if (XrResult res = xrEnumerateSwapchainImages(view.swapchain, uint32_t(images.size()), &chain_length, reinterpret_cast< XrSwapchainImageBaseHeader * >(images.data()));
 			    res != XR_SUCCESS) {

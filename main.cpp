@@ -14,9 +14,10 @@
 #include "load_save_png.hpp"
 
 #ifdef __ANDROID__
-//libSDL not used on android(!)
+#include <android_native_app_glue.h>
+
 #else
-//Includes for libSDL:
+//Includes for desktop platforms:
 #include <SDL.h>
 #endif
 
@@ -31,9 +32,169 @@
 #include <algorithm>
 #include <cstring>
 
+#ifdef __ANDROID__
+
+//modeled on OpenXR's "hello_xr" example's main.cpp:
+//  https://github.com/KhronosGroup/OpenXR-SDK-Source/blob/main/src/tests/hello_xr/main.cpp
+void android_main(struct android_app* app) {
+	try {
+		JNIEnv* Env;
+		app->activity->vm->AttachCurrentThread(&Env, nullptr);
+
+		//------- EGL setup -------
+
+		//create an EGL context:
+		//  based on hello_xr's gfxwrapper_opengl.c
+
+		EGLDisplay display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+		if (display == EGL_NO_DISPLAY) {
+			std::cerr << "ERROR: failed to get EGL display connection." << std::endl;
+			return;
+		}
+
+		EGLint major = 0;
+		EGLint minor = 0;
+		if (EGLBoolean res = eglInitialize(display, &major, &minor);
+		    res != EGL_TRUE) {
+			std::cerr << "ERROR: failed to initialize EGL connection." << std::endl;
+			return;
+		}
+
+		std::cout << "INFO: EGL reports version " << major << "." << minor << std::endl;
+
+		EGLConfig config;
+		{ //select a valid configuration:
+			//these are (basically) copied from ksGpuContext_CreateForSurface:
+			// (though that code warns about avoiding eglChooseConfig because it can force [useless] antialiasing
+			const EGLint attrib_list[] = {
+				EGL_RED_SIZE, 8,
+				EGL_GREEN_SIZE, 8,
+				EGL_BLUE_SIZE, 8,
+				EGL_ALPHA_SIZE, 8,
+				EGL_DEPTH_SIZE, 24,
+				EGL_SAMPLE_BUFFERS, 0,
+				EGL_SAMPLES, 0,
+				EGL_CONFORMANT, EGL_OPENGL_ES3_BIT,
+				EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
+				EGL_SURFACE_TYPE, EGL_WINDOW_BIT | EGL_PBUFFER_BIT,
+				EGL_NONE
+			};
+
+			std::array< EGLConfig, 12 > configs;
+			EGLint configs_count = 0;
+
+			if (EGLBoolean res = eglChooseConfig(display, attrib_list, configs.data(), configs.size(), &configs_count);
+			    res != EGL_TRUE) {
+				std::cerr << "Failed to choose EGL config." << std::endl;
+				return;
+			}
+
+			if (configs_count == 0) {
+				std::cerr << "Failed to find any suitable configs." << std::endl;
+				return;
+			}
+			config = configs[0];
+		}
+
+		//TODO: perhaps dump config info for later debugging help?
+
+		//create a surface (required when making a context current):
+		EGLSurface surface = EGL_NO_SURFACE;
+		{
+			const EGLint attrib_list[] = {
+				EGL_WIDTH, 16,
+				EGL_HEIGHT, 16,
+				EGL_NONE
+			};
+			surface = eglCreatePbufferSurface(display, config, attrib_list);
+			if (surface == EGL_NO_SURFACE) {
+				std::cerr << "Failed to create surface." << std::endl;
+				return;
+			}
+		}
+
+		//create a context (required for rendering commands):
+		EGLContext context = EGL_NO_CONTEXT;
+		{
+			const EGLint attrib_list[] = {
+				EGL_CONTEXT_MAJOR_VERSION, 3,
+				EGL_NONE
+			};
+
+			context = eglCreateContext(display, config, EGL_NO_CONTEXT, attrib_list);
+			if (context == EGL_NO_CONTEXT) {
+				std::cerr << "Failed to create context." << std::endl;
+				return;
+			}
+
+		}
+
+		{ //make context current:
+			if (EGLBoolean res = eglMakeCurrent(display, surface, surface, context);
+			    res != EGL_TRUE) {
+				std::cerr << "Failed to make surface current." << std::endl;
+				return;
+			}
+		}
+
+		//--------------------
+		//At this point, OpenGL ES should be good to go!
+
+		XR::PlatformInfo platform;
+		platform.application_vm = app->activity->vm;
+		platform.application_activity = app->activity->clazz;
+		platform.egl_display = display;
+		platform.egl_config = config;
+		platform.egl_context = context;
+
+		std::unique_ptr< XR > xr(new XR(platform, "gp23 OpenXR example", 1));
+
+
+	//....
+
+
+
+		//----- teardown -----
+
+		//OpenXR connection:
+		xr.reset();
+
+		//EGL stuff:
+
+		eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+
+		if (display && context) {
+			eglDestroyContext(display, context);
+			context = EGL_NO_CONTEXT;
+		}
+
+		if (display && surface) {
+			eglDestroySurface(display, surface);
+			surface = EGL_NO_SURFACE;
+		}
+
+		if (display) {
+			eglTerminate(display);
+			display = EGL_NO_DISPLAY;
+		}
+
+		//Detach from jvm:
+		app->activity->vm->DetachCurrentThread();
+
+	} catch (std::exception &e) {
+		std::cerr << "Exception: " << e.what() << std::endl;
+	} catch (...) {
+		std::cerr << "some other error" << std::endl;
+	}
+
+}
+
+#else //__ANDROID__
+
 #ifdef _WIN32
 extern "C" { uint32_t GetACP(); }
 #endif
+
 int main(int argc, char **argv) {
 #ifdef _WIN32
 	{ //when compiled on windows, check that code page is forced to utf-8 (makes file loading/saving work right):
@@ -268,3 +429,5 @@ int main(int argc, char **argv) {
 	}
 #endif
 }
+
+#endif //__ANDROID__ else

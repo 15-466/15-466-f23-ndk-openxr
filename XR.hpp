@@ -7,18 +7,41 @@
 #include <openxr/openxr.h>
 #include <glm/glm.hpp>
 
+#ifdef __ANDROID__
+//android-only includes:
+#include <EGL/egl.h>
+
+#else
+//desktop-only includes:
 #include <SDL.h>
+
+#endif //__ANDROID__
 
 #include <array>
 #include <string>
 #include <vector>
 
 struct XR {
+
+	//extra platform info needed for different variants of xrCreateInstance and 
+	struct PlatformInfo {
+		#ifdef __ANDROID__
+		void *application_vm = nullptr; //app->activity->vm
+		void *application_activity = nullptr; //app->activity->clazz
+		EGLDisplay egl_display = EGL_NO_DISPLAY;
+		EGLConfig  egl_config = NULL;
+		EGLContext egl_context = EGL_NO_CONTEXT;
+		#else
+		SDL_Window *window = nullptr;
+		SDL_GLContext context = nullptr;
+		#endif
+	};
+
 	//set up xrInstance:
 	// throws a std::runtime_error() if initialization fails
 	//NOTE: must only do with a valid OpenGL (/ OpenGLES) context!
 	XR(
-		SDL_Window *window, SDL_GLContext context,
+		PlatformInfo const &platform,
 		std::string const &application_name,
 		uint32_t application_version,
 		std::string const &engine_name = "",

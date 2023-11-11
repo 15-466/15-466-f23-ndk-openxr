@@ -1,5 +1,14 @@
 #pragma once
 
+#ifdef __ANDROID__
+
+//On android, use system headers:
+#include <GLES3/gl3.h>
+
+#else //__ANDROID__
+
+//Everywhere else, custom clean header:
+
 /*
  *
  * Function prototypes/pointers for OpenGL 3.3 core, with minimal namespace pollution.
@@ -1277,3 +1286,4 @@ GLAPI void (APIENTRYFP glVertexAttribP4ui) (GLuint index, GLenum type, GLboolean
 GLAPI void (APIENTRYFP glVertexAttribP4uiv) (GLuint index, GLenum type, GLboolean normalized, const GLuint *value);
 
 }
+#endif //__ANDROID__ else

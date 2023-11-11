@@ -19,8 +19,10 @@ inline void gl_errors(std::string const &where) {
 		CHECK( GL_INVALID_OPERATION )
 		CHECK( GL_INVALID_FRAMEBUFFER_OPERATION )
 		CHECK( GL_OUT_OF_MEMORY )
+#ifndef __ANDROID__
 		CHECK( GL_STACK_UNDERFLOW )
 		CHECK( GL_STACK_OVERFLOW )
+#endif //!__ANDROID__
 		{
 			std::cerr << "WARNING: gl error '" << err << "'" << std::endl;
 		}

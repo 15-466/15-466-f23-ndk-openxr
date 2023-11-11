@@ -62,6 +62,7 @@ PlayMode::PlayMode() : scene(*hexapod_scene) {
 PlayMode::~PlayMode() {
 }
 
+#ifndef __ANDROID__
 bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size) {
 
 	if (evt.type == SDL_KEYDOWN) {
@@ -121,6 +122,7 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 
 	return false;
 }
+#endif //__ANDROID__
 
 void PlayMode::update(float elapsed) {
 
@@ -254,7 +256,12 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 void PlayMode::draw_helper(glm::mat4 const &world_to_clip) {
 
 	glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
-	glClearDepth(1.0f); //1.0 is actually the default value to clear the depth buffer to, but FYI you can change it.
+	//1.0 is actually the default value to clear the depth buffer to, but FYI you can change it:
+	#ifdef __ANDROID__
+	glClearDepthf(1.0f); //OpenGLES version has 'f' suffix
+	#else
+	glClearDepth(1.0f); //OpenGL version does not
+	#endif
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	glEnable(GL_DEPTH_TEST);

@@ -1,5 +1,7 @@
 #include "GL.hpp"
 
+#ifndef __ANDROID__
+
 #include <SDL.h>
 #include <iostream>
 #include <stdexcept>
@@ -584,3 +586,4 @@ void init_GL() {
 	 void (APIENTRYFP glVertexAttribP4ui) (GLuint index, GLenum type, GLboolean normalized, GLuint value);
 	 void (APIENTRYFP glVertexAttribP4uiv) (GLuint index, GLenum type, GLboolean normalized, const GLuint *value);
 #endif
+#endif //__ANDROID__ else

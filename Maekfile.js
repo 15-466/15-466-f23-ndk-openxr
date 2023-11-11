@@ -20,6 +20,46 @@ const maek = init_maek();
 //Read onward to discover how to configure Maek for your build!
 //======================================================================
 
+
+//----  first, names of all the files to build ----
+const game_sources = [
+	'PlayMode.cpp',
+	'main.cpp',
+	'LitColorTextureProgram.cpp',
+	//'ColorTextureProgram.cpp',  //not used right now, but you might want it
+	'XR.cpp',
+];
+
+const common_sources = [
+	'data_path.cpp',
+	'PathFont.cpp',
+	'PathFont-font.cpp',
+	'DrawLines.cpp',
+	'ColorProgram.cpp',
+	'Scene.cpp',
+	'Mesh.cpp',
+	//'load_save_png.cpp', //<-- don't want to do a libpng compile for android just now
+	'gl_compile_program.cpp',
+	'Mode.cpp',
+	'GL.cpp',
+	'Load.cpp',
+];
+
+const show_mesh_sources = [
+	'show-meshes.cpp',
+	'ShowMeshesProgram.cpp',
+	'ShowMeshesMode.cpp',
+];
+
+const show_scene_sources = [
+	'show-scene.cpp',
+	'ShowSceneProgram.cpp',
+	'ShowSceneMode.cpp',
+];
+
+
+//---- now the desktop platform build steps ----
+
 const NEST_LIBS = `../nest-libs/${maek.OS}`;
 const OPENXR_SDK = `../openxr-sdk`;
 
@@ -92,63 +132,64 @@ if (maek.OS === 'linux') {
 	copies.push( maek.COPY(`${OPENXR_SDK}/build/linux/src/loader/libopenxr_loader.so.1`, `dist/libopenxr_loader.so.1`) );
 }
 
-//call rules on the maek object to specify tasks.
-// rules generally look like:
-//  output = maek.RULE_NAME(input [, output] [, {options}])
 
-//the '[objFile =] CPP(cppFile [, objFileBase] [, options])' compiles a c++ file:
-// cppFile: name of c++ file to compile
-// objFileBase (optional): base name object file to produce (if not supplied, set to options.objDir + '/' + cppFile without the extension)
-//returns objFile: objFileBase + a platform-dependant suffix ('.o' or '.obj')
-const game_names = [
-	maek.CPP('PlayMode.cpp'),
-	maek.CPP('main.cpp'),
-	maek.CPP('LitColorTextureProgram.cpp'),
-	//, maek.CPP('ColorTextureProgram.cpp')  //not used right now, but you might want it
-	maek.CPP('XR.cpp')
-];
+//call make.CPP('source.cpp') on all the sources to indicate they should be compiled as C++:
+const game_objs = game_sources.map((x) => maek.CPP(x));
+const common_objs = common_sources.map((x) => maek.CPP(x));
+const show_mesh_objs = show_mesh_sources.map((x) => maek.CPP(x));
+const show_scene_objs = show_scene_sources.map((x) => maek.CPP(x));
 
-const common_names = [
-	maek.CPP('data_path.cpp'),
-	maek.CPP('PathFont.cpp'),
-	maek.CPP('PathFont-font.cpp'),
-	maek.CPP('DrawLines.cpp'),
-	maek.CPP('ColorProgram.cpp'),
-	maek.CPP('Scene.cpp'),
-	maek.CPP('Mesh.cpp'),
-	maek.CPP('load_save_png.cpp'),
-	maek.CPP('gl_compile_program.cpp'),
-	maek.CPP('Mode.cpp'),
-	maek.CPP('GL.cpp'),
-	maek.CPP('Load.cpp')
-];
 
-const show_mesh_names = [
-	maek.CPP('show-meshes.cpp'),
-	maek.CPP('ShowMeshesProgram.cpp'),
-	maek.CPP('ShowMeshesMode.cpp')
-];
-
-const show_scene_names = [
-	maek.CPP('show-scene.cpp'),
-	maek.CPP('ShowSceneProgram.cpp'),
-	maek.CPP('ShowSceneMode.cpp')
-];
 
 //the '[exeFile =] LINK(objFiles, exeFileBase, [, options])' links an array of objects into an executable:
 // objFiles: array of objects to link
 // exeFileBase: name of executable file to produce
 //returns exeFile: exeFileBase + a platform-dependant suffix (e.g., '.exe' on windows)
-const game_exe = maek.LINK([...game_names, ...common_names], 'dist/game');
-const show_meshes_exe = maek.LINK([...show_mesh_names, ...common_names], 'scenes/show-meshes');
-const show_scene_exe = maek.LINK([...show_scene_names, ...common_names], 'scenes/show-scene');
+const game_exe = maek.LINK([...game_objs, ...common_objs], 'dist/game');
+const show_meshes_exe = maek.LINK([...show_mesh_objs, ...common_objs], 'scenes/show-meshes');
+const show_scene_exe = maek.LINK([...show_scene_objs, ...common_objs], 'scenes/show-scene');
 
 //set the default target to the game (and copy the readme files):
 maek.TARGETS = [game_exe, show_meshes_exe, show_scene_exe, ...copies];
 
-//Note that tasks that produce ':abstract targets' are never cached.
-// This is similar to how .PHONY targets behave in make.
+//---- android build stuff ----
 
+const NDK = `../android-sdk/ndk/26.1.10909125`;
+const NDK_CLANG = `${NDK}/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++`;
+
+const android_options = {
+	objPrefix: 'objs/android/',
+	objSuffix: '.o',
+	exeSuffix: '', //suffix for executable files (but never comes up, actually)
+	CPP: [
+		`${NDK}/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++`,
+		'-Wall', '-Werror',
+		'-target', 'aarch64-linux-android29',
+		`-I`, `../nest-libs/linux/glm/include`,
+		`-I`, `../ovr-openxr-sdk/OpenXR/Include`,
+		`-I`, `../ovr-openxr-sdk/3rdParty/khronos/openxr/OpenXR-SDK/include`,
+		`-I`, `${NDK}/sources/android/native_app_glue/`,
+	],
+	CPPFlags: [], //extra flags for c++ compiler
+	LINK: [
+		`${NDK}/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++`,
+		'-target', 'aarch64-linux-android29',
+		'-Wl,-Bsymbolic', //look for global symbols inside library first
+		'-Wl,-soname,libgame.so', //specify name of output library (suggested by https://android.googlesource.com/platform/ndk/+/master/docs/BuildSystemMaintainers.md#Additional-Required-Arguments )
+		'-shared',
+	],
+	LINKLibs: [], //extra -L and -l flags for linker
+};
+
+
+maek.CPP('main.cpp', android_options);
+
+const android_game_objs = game_sources.map((x) => maek.CPP(x, undefined, android_options));
+const android_common_objs = common_sources.map((x) => maek.CPP(x, undefined, android_options));
+
+const android_game_so = maek.LINK([...android_game_objs, ...android_common_objs], 'dist-android/libgame.so', android_options);
+
+maek.TARGETS = [android_game_so]; //DEBUG
 
 
 //======================================================================
@@ -596,11 +637,17 @@ function init_maek() {
 	// (used by run to figure out what to hash)
 	async function findExe(command) {
 		const osPath = require('path');
+
 		let PATH;
-		if (maek.OS === 'windows') {
-			PATH = process.env.PATH.split(';');
+		//any command with a path separator is looked up directly:
+		if (command[0].includes(osPath.sep)) {
+			PATH = [''];
 		} else {
-			PATH = process.env.PATH.split(':');
+			if (maek.OS === 'windows') {
+				PATH = process.env.PATH.split(';');
+			} else {
+				PATH = process.env.PATH.split(':');
+			}
 		}
 		for (const prefix of PATH) {
 			const exe = osPath.resolve(prefix, command[0]);

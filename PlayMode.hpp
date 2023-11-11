@@ -12,7 +12,9 @@ struct PlayMode : Mode {
 	virtual ~PlayMode();
 
 	//functions called by main loop:
+	#ifndef __ANDROID__
 	virtual bool handle_event(SDL_Event const &, glm::uvec2 const &window_size) override;
+	#endif //__ANDROID__
 	virtual void update(float elapsed) override;
 	virtual void draw(glm::uvec2 const &drawable_size) override;
 

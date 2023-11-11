@@ -110,3 +110,16 @@ $ ./platform-tools/adb shell
 ## OpenXR Notes
 
 
+
+## EXTRA NOTES
+
+https://developer.oculus.com/documentation/native/android/mobile-native-manifest/
+
+https://developer.android.com/ndk/guides/concepts#na
+
+https://stackoverflow.com/questions/75463480/is-it-possible-to-use-android-ndk-without-nativeactivity
+
+
+https://stackoverflow.com/questions/59504840/create-jni-ndk-apk-only-command-line-without-gradle-ant-or-cmake
+
+https://android.googlesource.com/platform/ndk/+/master/docs/BuildSystemMaintainers.md#Clang

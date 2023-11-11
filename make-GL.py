@@ -107,6 +107,15 @@ with open('glcorearb.h', 'r') as f:
 with open("GL.hpp", "w") as f:
 	print("""#pragma once
 
+#ifdef __ANDROID__
+
+//On android, use system headers:
+#include <GLES3/gl3.h>
+
+#else //__ANDROID__
+
+//Everywhere else, custom clean header:
+
 /*
  *
  * Function prototypes/pointers for OpenGL 3.3 core, with minimal namespace pollution.
@@ -151,11 +160,14 @@ typedef signed   long  int     khronos_ssize_t;
 	print("\n".join(filtered), file=f)
 
 	print("""
-}""", file=f)
+}
+#endif //__ANDROID__ else""", file=f)
 
 
 with open("GL.cpp", "w") as f:
 	print("""#include "GL.hpp"
+
+#ifndef __ANDROID__
 
 #include <SDL.h>
 #include <iostream>
@@ -177,3 +189,4 @@ void init_GL() {""", file=f)
 #ifdef _WIN32""", file=f)
 	print("\t" + "\n\t".join(fps),file=f)
 	print("""#endif""", file=f)
+	print("""#endif //__ANDROID__ else""", file=f)
