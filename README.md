@@ -123,3 +123,6 @@ https://stackoverflow.com/questions/75463480/is-it-possible-to-use-android-ndk-w
 https://stackoverflow.com/questions/59504840/create-jni-ndk-apk-only-command-line-without-gradle-ant-or-cmake
 
 https://android.googlesource.com/platform/ndk/+/master/docs/BuildSystemMaintainers.md#Clang
+
+
+https://stackoverflow.com/questions/64878248/switch-from-aapt-to-aapt2-for-native-app-packaging

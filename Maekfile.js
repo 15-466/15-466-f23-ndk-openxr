@@ -174,9 +174,9 @@ const android_options = {
 	LINK: [
 		`${NDK}/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++`,
 		'-target', 'aarch64-linux-android29',
+		'-shared',
 		'-Wl,-Bsymbolic', //look for global symbols inside library first
 		'-Wl,-soname,libgame.so', //specify name of output library (suggested by https://android.googlesource.com/platform/ndk/+/master/docs/BuildSystemMaintainers.md#Additional-Required-Arguments )
-		'-shared',
 	],
 	LINKLibs: [], //extra -L and -l flags for linker
 };
@@ -187,7 +187,37 @@ maek.CPP('main.cpp', android_options);
 const android_game_objs = game_sources.map((x) => maek.CPP(x, undefined, android_options));
 const android_common_objs = common_sources.map((x) => maek.CPP(x, undefined, android_options));
 
-const android_game_so = maek.LINK([...android_game_objs, ...android_common_objs], 'dist-android/libgame.so', android_options);
+const android_game_so = maek.LINK([...android_game_objs, ...android_common_objs], 'dist-android/apk/lib/arm64-v8a/libgame.so', android_options);
+
+//quick generic "RULE" for running commands with maek:
+// [outFiles] = maek.RULE([outFile0, outFile1, ...], [inFile0, inFile1, ...], command, [desc])
+maek.RULE = (outFiles, inFiles, command, desc = "run") => {
+	const task = async () => {
+		for (const outFile of outFiles) {
+			await fsPromises.mkdir(path.dirname(outFile), { recursive: true });
+		}
+		await run(command, `${task.label}: ${desc} [${idx} of ${commands.length+1}]`,
+			async () => {
+				return {
+					read:[...inFiles],
+					written:[...outFiles]
+				};
+			}
+		);
+	};
+
+	task.depends = [...inFiles];
+	task.label = `RULE {${inFiles.join(", ")}}`;
+
+	for (outFile of outFiles) {
+		if (outFile in maek.tasks) {
+			throw new Error(`Task ${task.label} purports to create ${outFile}, but ${maek.tasks[outFile].label} already creates that file.`);
+		}
+		maek.tasks[outFile] = task;
+	}
+	return outFiles;
+};
+
 
 maek.TARGETS = [android_game_so]; //DEBUG
 
