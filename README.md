@@ -96,10 +96,12 @@ $ ./platform-tools/adb devices
 # shows "unauthorized" and causes the "allow debugging" dialog to pop on the headset
 # if dialog accepted, says "device" next to the device (maybe that's the device name?)
 $ ./platform-tools/adb devices
+
 # if you like to explore a bit, get a shell on your device:
 $ ./platform-tools/adb shell
 # interesting things include `top` (see what's running), `cat /proc/cpuinfo` (learn more about the cpu)
 #(ctrl-d to exit)
+
 ```
 
 ## Building
@@ -108,6 +110,34 @@ $ ./platform-tools/adb shell
 
 
 ## OpenXR Notes
+
+## Installing on Android
+
+
+Basic install + run workflow:
+```
+#from this folder, after building and packaging:
+
+#install the app:
+$ ../android-sdk/platform-tools/adb install -r dist-android/game.apk
+
+#start the app:
+$ ../android-sdk/platform-tools/adb shell am start --activity-clear-top -n "com.tchow.game/android.app.NativeActivity"
+```
+
+For checking things are okay:
+```
+#print system log: (note -- can filter)
+$ ../android-sdk/platform-tools/adb logcat
+#version with some filtering:
+$ ../android-sdk/platform-tools/adb logcat *:E OpenXR:I
+
+#see what's installed:
+$ ../android-sdk/platform-tools/adb shell pm list packages
+
+#uninstall the app:
+$ ../android-sdk/platform-tools/adb uninstall com.tchow.com
+```
 
 
 

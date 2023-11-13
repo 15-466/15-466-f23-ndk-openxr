@@ -182,44 +182,69 @@ const android_options = {
 };
 
 
-maek.CPP('main.cpp', android_options);
-
 const android_game_objs = game_sources.map((x) => maek.CPP(x, undefined, android_options));
 const android_common_objs = common_sources.map((x) => maek.CPP(x, undefined, android_options));
 
-const android_game_so = maek.LINK([...android_game_objs, ...android_common_objs], 'dist-android/apk/lib/arm64-v8a/libgame.so', android_options);
+const android_game_so = maek.LINK([...android_game_objs, ...android_common_objs], 'objs/android/apk/lib/arm64-v8a/libgame.so', android_options);
 
-//quick generic "RULE" for running commands with maek:
-// [outFiles] = maek.RULE([outFile0, outFile1, ...], [inFile0, inFile1, ...], command, [desc])
-maek.RULE = (outFiles, inFiles, command, desc = "run") => {
-	const task = async () => {
-		for (const outFile of outFiles) {
-			await fsPromises.mkdir(path.dirname(outFile), { recursive: true });
+const ovr_openxr_loader_so = maek.COPY('../ovr-openxr-sdk/OpenXR/Libs/Android/arm64-v8a/Release/libopenxr_loader.so', 'objs/android/apk/lib/arm64-v8a/libopenxr_loader.so');
+
+
+const AAPT2 = `../android-sdk/build-tools/30.0.3/aapt2`;
+
+const apkFile = `android/game.apk`;
+
+const android_icons = [ ];
+for (const dpi of ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi']) {
+	const inFile = `android/res/mipmap-${dpi}/gp-icon.png`;
+	const outFile = `objs/android/apk/mipmap-${dpi}_gp-icon.png.flat`;
+	const command = [AAPT2, 'compile', '-o', 'objs/android/apk', '-v', inFile];
+	android_icons.push( ...maek.RULE( [outFile], [inFile], command, "aapt compile" ) );
+}
+
+//basically just the shell script, transcribed:
+
+const package_apk_task = async () => {
+
+	const proc = child_process.spawnSync(
+		[AAPT2, 
+	);
+	//make object file:
+	await fsPromises.mkdir(path.dirname(objFile), { recursive: true });
+	await fsPromises.mkdir(path.dirname(depsFile), { recursive: true });
+	await run(command, `${task.label}: compile + prerequisites`,
+		async () => {
+		return {
+				read:[...await loadDeps()],
+						written:[objFile, depsFile]
+			};
 		}
-		await run(command, `${task.label}: ${desc} [${idx} of ${commands.length+1}]`,
-			async () => {
-				return {
-					read:[...inFiles],
-					written:[...outFiles]
-				};
-			}
-		);
-	};
-
-	task.depends = [...inFiles];
-	task.label = `RULE {${inFiles.join(", ")}}`;
-
-	for (outFile of outFiles) {
-		if (outFile in maek.tasks) {
-			throw new Error(`Task ${task.label} purports to create ${outFile}, but ${maek.tasks[outFile].label} already creates that file.`);
-		}
-		maek.tasks[outFile] = task;
-	}
-	return outFiles;
+	);
 };
+package_apk_task.depends = [android_game_so, ovr_openxr_loader_so, android_icons];
+package_apk_task.label = `PACKAGE ${apkFile}`;
+maek.tasks[apkFile] = task;
 
 
-maek.TARGETS = [android_game_so]; //DEBUG
+
+
+const android_apk = maek.RULE(
+	[`dist-android/game.apk`],
+	[android_game_so, ...android_icons, 'android/AndroidManifest.xml'],
+	['../../../' + AAPT2, 'link',
+		'-o', 'dist-android/game.apk',
+		'-I', `../android-sdk/platforms/android-29/android.jar`,
+		...android_icons,
+		android_game_so,
+		'--manifest', 'android/AndroidManifest.xml',
+		//'-A', 'objs/android/apk',
+		'-v'
+	],
+	{label:"aapt link", cwd:'objs/android/apk'}
+);
+
+
+maek.TARGETS = [android_apk]; //DEBUG
 
 
 //======================================================================
@@ -348,6 +373,42 @@ function init_maek() {
 		maek.tasks[dstFile] = task;
 
 		return dstFile;
+	};
+
+	//RULE adds a generic task:
+	// outFiles is an array of output files
+	// inFiles is an array of input files
+	// command is a command (as an array of [program, arg1, arg2, ...]
+	// options:
+	//   label: printed during rule execution
+	//   cwd: working directory for command (if not this directory)
+	//returns a copy of outFiles
+	// [outFiles] = maek.RULE([outFile0, outFile1, ...], [inFile0, inFile1, ...], command, [desc])
+	maek.RULE = (outFiles, inFiles, command, {label='run', cwd=''}) => {
+		const task = async () => {
+			for (const outFile of outFiles) {
+				await fsPromises.mkdir(path.dirname(outFile), { recursive: true });
+			}
+			await run(command, `${task.label}: ${label}`,
+				async () => {
+					return {
+						read:[...inFiles],
+						written:[...outFiles]
+					};
+				},
+				cwd
+			);
+		};
+
+		task.depends = [...inFiles];
+		task.label = `RULE {${outFiles.join(", ")}}`;
+		for (outFile of outFiles) {
+			if (outFile in maek.tasks) {
+				throw new Error(`Task ${task.label} purports to create ${outFile}, but ${maek.tasks[outFile].label} already creates that file.`);
+			}
+			maek.tasks[outFile] = task;
+		}
+		return outFiles;
 	};
 
 
@@ -526,13 +587,14 @@ function init_maek() {
 	//runs a shell command (presented as an array)
 	// 'message' will be displayed above the command
 	// 'cacheInfoFn', if provided, will be called after function is run to determine which files to hash when caching the result
-	async function run(command, message, cacheInfoFn) {
+	// 'cwd' is the working directory for the command
+	async function run(command, message, cacheInfoFn, cwd='.') {
 
 		//cache key for the command -- encoded command name:
-		const cacheKey = JSON.stringify(command);
+		const cacheKey = JSON.stringify([cwd, ...command]);
 
 		//executable for the command:
-		const exe = await findExe(command);
+		const exe = await findExe(command, cwd);
 
 		//if no cache info function, remove any existing cache entry:
 		if (!cacheInfoFn) {
@@ -577,7 +639,8 @@ function init_maek() {
 		await new Promise((resolve, reject) => {
 			const proc = child_process.spawn(command[0], command.slice(1), {
 				shell: false,
-				stdio: ['ignore', 'inherit', 'inherit']
+				stdio: ['ignore', 'inherit', 'inherit'],
+				cwd: cwd
 			});
 			proc.on('exit', (code, signal) => {
 				if (code !== 0) {
@@ -665,13 +728,13 @@ function init_maek() {
 
 	//find an executable in the system path
 	// (used by run to figure out what to hash)
-	async function findExe(command) {
+	async function findExe(command, cwd='.') {
 		const osPath = require('path');
 
 		let PATH;
 		//any command with a path separator is looked up directly:
 		if (command[0].includes(osPath.sep)) {
-			PATH = [''];
+			PATH = [cwd];
 		} else {
 			if (maek.OS === 'windows') {
 				PATH = process.env.PATH.split(';');

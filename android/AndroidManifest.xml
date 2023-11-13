@@ -50,7 +50,7 @@
     android:allowBackup="true"
     android:hasCode="false"
     android:icon="@mipmap/gp-icon"
-    android:label="@string/app_name"
+    android:label="gp23 openxr example"
     android:roundIcon="@mipmap/gp-icon">
 
     <!-- The activity is the built-in NativeActivity framework class. -->
