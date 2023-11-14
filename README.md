@@ -42,7 +42,7 @@ Also download Meta's OpenXR SDK (from https://developer.oculus.com/downloads/pac
 ```
 $ mkdir ovr-openxr-sdk
 $ cd ovr-openxr-sdk
-$ unzip ../downloads/ovr_openxr_mobile_sdk_57.0.zip #current version as of this writing
+$ unzip ../downloads/ovr_openxr_mobile_sdk_59.0.zip #current version as of this writing
 ```
 
 For **desktop** VR use, grab Khronos's OpenXR loader: (see the README.md for more build info; like non-linux build instructions, required packages to install)
@@ -106,8 +106,12 @@ $ ./platform-tools/adb shell
 
 ## Building
 
-...
+```
+#build and package:
+$ node Maekfile.js dist-android/game.apk
+```
 
+NOTE: this build will sign the build with the keypair stored in the `android/` folder. For testing it's probably fine to just use the included keypair (which was made with `android/gen_key.sh`); be aware that this does mean that anyone with access to this repository can (if they have your development hardware) overwrite your test builds with their own without uninstalling. I.e., they can read data your test build writes on your test device if they have physical access to your test device.
 
 ## OpenXR Notes
 
@@ -122,7 +126,7 @@ Basic install + run workflow:
 $ ../android-sdk/platform-tools/adb install -r dist-android/game.apk
 
 #start the app:
-$ ../android-sdk/platform-tools/adb shell am start --activity-clear-top -n "com.tchow.game/android.app.NativeActivity"
+$ ../android-sdk/platform-tools/adb shell am start --activity-clear-top -n "com.game_programming.ndk_openxr_example/android.app.NativeActivity"
 ```
 
 For checking things are okay:
@@ -136,7 +140,7 @@ $ ../android-sdk/platform-tools/adb logcat *:E OpenXR:I
 $ ../android-sdk/platform-tools/adb shell pm list packages
 
 #uninstall the app:
-$ ../android-sdk/platform-tools/adb uninstall com.tchow.com
+$ ../android-sdk/platform-tools/adb uninstall com.game_programming.ndk_openxr_example
 ```
 
 

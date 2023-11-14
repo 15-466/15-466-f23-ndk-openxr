@@ -154,9 +154,22 @@ maek.TARGETS = [game_exe, show_meshes_exe, show_scene_exe, ...copies];
 
 //---- android build stuff ----
 
-const NDK = `../android-sdk/ndk/26.1.10909125`;
-const NDK_CLANG = `${NDK}/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++`;
+//android sdk location:
+const ANDROID_SDK = `../android-sdk`;
 
+//versions of various android sdk packages:
+const NDK = `${ANDROID_SDK}/ndk/26.1.10909125`;
+const BUILD_TOOLS = `${ANDROID_SDK}/build-tools/33.0.2`; //n.b. need at least 30 because of 'queries' in the manifest
+const ANDROID_PLATFORM = `${ANDROID_SDK}/platforms/android-29`;
+
+//actual android sdk tools:
+const NDK_CLANG = `${NDK}/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++`;
+const AAPT2 = `${BUILD_TOOLS}/aapt2`; //used to build the initial apk
+const AAPT = `${BUILD_TOOLS}/aapt`; //used to add ndk-build .so files to the apk
+const ZIPALIGN = `${BUILD_TOOLS}/zipalign`; //used to... align... the apk (?)
+const APKSIGNER = `${BUILD_TOOLS}/apksigner`; //used to sign the final apk
+
+//for making the CPP/LINK rules compiling/link with the NDK:
 const android_options = {
 	objPrefix: 'objs/android/',
 	objSuffix: '.o',
@@ -189,59 +202,93 @@ const android_game_so = maek.LINK([...android_game_objs, ...android_common_objs]
 
 const ovr_openxr_loader_so = maek.COPY('../ovr-openxr-sdk/OpenXR/Libs/Android/arm64-v8a/Release/libopenxr_loader.so', 'objs/android/apk/lib/arm64-v8a/libopenxr_loader.so');
 
+const libcpp_shared_so = maek.COPY(`${NDK}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so`, 'objs/android/apk/lib/arm64-v8a/libc++_shared.so');
 
-const AAPT2 = `../android-sdk/build-tools/30.0.3/aapt2`;
 
-const apkFile = `android/game.apk`;
 
 const android_icons = [ ];
 for (const dpi of ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi']) {
 	const inFile = `android/res/mipmap-${dpi}/gp-icon.png`;
 	const outFile = `objs/android/apk/mipmap-${dpi}_gp-icon.png.flat`;
 	const command = [AAPT2, 'compile', '-o', 'objs/android/apk', '-v', inFile];
-	android_icons.push( ...maek.RULE( [outFile], [inFile], command, "aapt compile" ) );
+	android_icons.push( ...maek.RULE( outFile, inFile, command, "aapt compile" ) );
 }
 
-//basically just the shell script, transcribed:
+
+const android_apk = `dist-android/game.apk`;
 
 const package_apk_task = async () => {
+	const fsPromises = require('fs').promises;
+	const fs = require('fs');
+	const path = require('path').posix; //NOTE: expect posix-style paths even on windows
 
-	const proc = child_process.spawnSync(
-		[AAPT2, 
-	);
-	//make object file:
-	await fsPromises.mkdir(path.dirname(objFile), { recursive: true });
-	await fsPromises.mkdir(path.dirname(depsFile), { recursive: true });
-	await run(command, `${task.label}: compile + prerequisites`,
-		async () => {
-		return {
-				read:[...await loadDeps()],
-						written:[objFile, depsFile]
-			};
+	//intermediate apk files:
+	const packaged_apk = `objs/android/packaged.apk`; //packaged but not yet aligned or signed
+	const aligned_apk = `objs/android/packaged_aligned.apk`; //after zipalign
+
+	//clean up previous apk files:
+	function rm_dash_f(file) {
+		try {
+			fs.unlinkSync(file);
+		} catch(err) {
+			//ENOENT is okay; all others might be a problem:
+			if (err.code !== 'ENOENT') throw err;
 		}
-	);
-};
-package_apk_task.depends = [android_game_so, ovr_openxr_loader_so, android_icons];
-package_apk_task.label = `PACKAGE ${apkFile}`;
-maek.tasks[apkFile] = task;
+	}
+	rm_dash_f(packaged_apk);
+	rm_dash_f(aligned_apk);
 
+	//make sure output folders exist:
+	await fsPromises.mkdir(path.dirname(packaged_apk), { recursive: true });
+	await fsPromises.mkdir(path.dirname(aligned_apk), { recursive: true });
+	await fsPromises.mkdir(path.dirname(android_apk), { recursive: true });
 
-
-
-const android_apk = maek.RULE(
-	[`dist-android/game.apk`],
-	[android_game_so, ...android_icons, 'android/AndroidManifest.xml'],
-	['../../../' + AAPT2, 'link',
-		'-o', 'dist-android/game.apk',
-		'-I', `../android-sdk/platforms/android-29/android.jar`,
-		...android_icons,
-		android_game_so,
+	//create apk from data files:
+	await maek.run([
+		AAPT2, 'link',
+		'-o', packaged_apk,
+		'-I', `${ANDROID_PLATFORM}/android.jar`,
 		'--manifest', 'android/AndroidManifest.xml',
-		//'-A', 'objs/android/apk',
-		'-v'
-	],
-	{label:"aapt link", cwd:'objs/android/apk'}
-);
+		...android_icons,
+		'-v' //verbose output
+	], `PACKAGE (data) ${packaged_apk}` );
+
+	//add so files:
+	//NOTE: this needs to be done from the objs/android/apk directory because the relative path is stored :-/
+	await maek.run([
+		`../../../${AAPT}`, 'add',
+		`../../../${packaged_apk}`,
+		'lib/arm64-v8a/libgame.so',
+		'lib/arm64-v8a/libopenxr_loader.so',
+		'lib/arm64-v8a/libc++_shared.so',
+	], `PACKAGE (.so) ${packaged_apk}`, undefined, 'objs/android/apk' );
+
+	//align the apk:
+	await maek.run([
+		ZIPALIGN,
+		'-f', //overwrite output if it exists
+		'-p', //"page-align .so files" whatever that means
+		'4', //32-bit alignment
+		packaged_apk, //input apk
+		aligned_apk //output apk
+	], `ALIGN ${packaged_apk} -> ${aligned_apk}` );
+
+
+	//sign the apk:
+	await maek.run([
+		APKSIGNER,
+		'sign',
+		'--key', 'android/testkey.pk8',
+		'--cert', 'android/testkey.x509.pem',
+		'--in', aligned_apk,
+		'--out', android_apk,
+	], `SIGN ${aligned_apk} -> ${android_apk}` );
+
+
+};
+package_apk_task.depends = [android_game_so, ovr_openxr_loader_so, libcpp_shared_so, ...android_icons];
+package_apk_task.label = `PACKAGE ${android_apk}`;
+maek.tasks[android_apk] = package_apk_task;
 
 
 maek.TARGETS = [android_apk]; //DEBUG
@@ -376,8 +423,8 @@ function init_maek() {
 	};
 
 	//RULE adds a generic task:
-	// outFiles is an array of output files
-	// inFiles is an array of input files
+	// outFiles is a single or an array of output files
+	// inFiles is a single or an array of input files
 	// command is a command (as an array of [program, arg1, arg2, ...]
 	// options:
 	//   label: printed during rule execution
@@ -385,6 +432,8 @@ function init_maek() {
 	//returns a copy of outFiles
 	// [outFiles] = maek.RULE([outFile0, outFile1, ...], [inFile0, inFile1, ...], command, [desc])
 	maek.RULE = (outFiles, inFiles, command, {label='run', cwd=''}) => {
+		if (typeof outFiles === 'string') outFiles = [outFiles];
+		if (typeof inFiles === 'string') inFiles = [inFiles];
 		const task = async () => {
 			for (const outFile of outFiles) {
 				await fsPromises.mkdir(path.dirname(outFile), { recursive: true });
@@ -672,8 +721,8 @@ function init_maek() {
 				hashes:await hashFiles([exe, ...files])
 			};
 		}
-
 	}
+	maek.run = run; //for custom tasks
 
 	let hashCacheHits = 0;
 	let hashCache = {};
