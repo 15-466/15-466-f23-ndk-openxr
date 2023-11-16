@@ -15,8 +15,8 @@
 
 #ifdef __ANDROID__
 #include <android_native_app_glue.h>
-//#include <android/log.h>
-//#include <unistd.h>
+#include <android/log.h>
+#include <unistd.h>
 
 #else
 //Includes for desktop platforms:
@@ -35,8 +35,6 @@
 #include <cstring>
 
 #ifdef __ANDROID__
-
-/*
 
 //This delightful redirect hack based on:
 // https://codelab.wordpress.com/2014/11/03/how-to-use-standard-output-streams-for-logging-in-android-apps/
@@ -75,18 +73,17 @@ int start_logger() {
 	pthread_detach(thr);
 	return 0;
 }
-*/
 
 
 //modeled on OpenXR's "hello_xr" example's main.cpp:
 //  https://github.com/KhronosGroup/OpenXR-SDK-Source/blob/main/src/tests/hello_xr/main.cpp
 void android_main(struct android_app* app) {
-/*
+
 	if (start_logger() != 0) {
 		__android_log_write(ANDROID_LOG_FATAL, tag, "Failed to start log thread!");
 		return;
 	}
-*/
+
 	try {
 		JNIEnv* Env;
 		app->activity->vm->AttachCurrentThread(&Env, nullptr);
@@ -126,6 +123,8 @@ void android_main(struct android_app* app) {
 				EGL_SAMPLES, 0,
 				EGL_CONFORMANT, EGL_OPENGL_ES3_BIT,
 				EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
+				//EGL_BIND_TO_TEXTURE_RGB, EGL_TRUE,
+				EGL_BIND_TO_TEXTURE_RGBA, EGL_TRUE,
 				EGL_SURFACE_TYPE, EGL_WINDOW_BIT | EGL_PBUFFER_BIT,
 				EGL_NONE
 			};
@@ -146,7 +145,54 @@ void android_main(struct android_app* app) {
 			config = configs[0];
 		}
 
-		//TODO: perhaps dump config info for later debugging help?
+		{ //dump info about config for debugging purposes
+			EGLint value = 0;
+			std::string info = "Chosen config attributes:\n";
+			#define DO(name) \
+				info += "  " #name ": "; \
+				if (EGLBoolean res = eglGetConfigAttrib(display, config, name, &value); \
+				    res == EGL_TRUE) { \
+					info += std::to_string(value) + "\n"; \
+				} else { \
+					info += "(failed to get value!)\n"; \
+				}
+
+			DO(EGL_RED_SIZE)
+			DO(EGL_GREEN_SIZE)
+			DO(EGL_BLUE_SIZE)
+			DO(EGL_ALPHA_SIZE)
+			DO(EGL_DEPTH_SIZE)
+			DO(EGL_STENCIL_SIZE)
+			DO(EGL_ALPHA_MASK_SIZE)
+			DO(EGL_SAMPLE_BUFFERS)
+			DO(EGL_SAMPLES)
+			DO(EGL_BIND_TO_TEXTURE_RGB)
+			DO(EGL_BIND_TO_TEXTURE_RGBA)
+			DO(EGL_BUFFER_SIZE)
+			DO(EGL_COLOR_BUFFER_TYPE)
+			DO(EGL_CONFIG_CAVEAT)
+			DO(EGL_CONFIG_ID)
+			DO(EGL_CONFORMANT)
+			DO(EGL_LEVEL)
+			DO(EGL_LUMINANCE_SIZE)
+			DO(EGL_MAX_PBUFFER_WIDTH)
+			DO(EGL_MAX_PBUFFER_HEIGHT)
+			DO(EGL_MAX_PBUFFER_PIXELS)
+			DO(EGL_MAX_SWAP_INTERVAL)
+			DO(EGL_MIN_SWAP_INTERVAL)
+			DO(EGL_NATIVE_RENDERABLE)
+			DO(EGL_NATIVE_VISUAL_ID)
+			DO(EGL_NATIVE_VISUAL_TYPE)
+			DO(EGL_RENDERABLE_TYPE)
+			DO(EGL_SURFACE_TYPE)
+			DO(EGL_TRANSPARENT_TYPE)
+			DO(EGL_TRANSPARENT_RED_VALUE)
+			DO(EGL_TRANSPARENT_GREEN_VALUE)
+			DO(EGL_TRANSPARENT_BLUE_VALUE)
+
+			#undef DO
+			std::cout << info; std::cout.flush();
+		}
 
 		//create a surface (required when making a context current):
 		EGLSurface surface = EGL_NO_SURFACE;
@@ -168,6 +214,7 @@ void android_main(struct android_app* app) {
 		{
 			const EGLint attrib_list[] = {
 				EGL_CONTEXT_MAJOR_VERSION, 3,
+				EGL_CONTEXT_MINOR_VERSION, 2,
 				EGL_NONE
 			};
 

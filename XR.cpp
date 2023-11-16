@@ -30,6 +30,7 @@
 
 
 #include <iostream>
+#include <sstream>
 #include <cstring>
 #include <vector>
 #include <array>
@@ -46,6 +47,22 @@ XR::XR(
 	uint32_t engine_version
 ) {
 	std::cout << "--- initializing OpenXR ---" << std::endl;
+
+#ifdef __ANDROID__
+	{ //call xrInitializeLoaderKHR (based on XrApp.cpp from OVR OpenXR SDK):
+		PFN_xrInitializeLoaderKHR xrInitializeLoaderKHR;
+		xrGetInstanceProcAddr(XR_NULL_HANDLE, "xrInitializeLoaderKHR", reinterpret_cast< PFN_xrVoidFunction* >(&xrInitializeLoaderKHR));
+		if (xrInitializeLoaderKHR != NULL) {
+			XrLoaderInitInfoAndroidKHR loader_init_info = {XR_TYPE_LOADER_INIT_INFO_ANDROID_KHR};
+			loader_init_info.applicationVM = platform.application_vm;
+			loader_init_info.applicationContext = platform.application_activity; //TODO: is this right? OVR sample does it, but docs say this should be a "android.content.Context" (which seems different from the Activity below)
+        	if (XrResult res = xrInitializeLoaderKHR(reinterpret_cast< XrLoaderInitInfoBaseHeaderKHR *>(&loader_init_info));
+			    res != XR_SUCCESS) {
+				std::cerr << "WARNING: xrInitializeLoaderKHR failed: " << to_string(res) << std::endl;
+			}
+		}
+    }
+#endif //__ANDROID__
 
 	XrInstanceCreateInfo create_info{XR_TYPE_INSTANCE_CREATE_INFO};
 
@@ -64,8 +81,15 @@ XR::XR(
 
 	create_info.applicationInfo.apiVersion = XR_CURRENT_API_VERSION;
 
-	//TODO: ON ANROID --> set create_info->next to point to an XrInstanceCreateInfoAndroidKHR structure
-	//  filled in as per openxr-sdk-source's platformplugin_android.cpp
+#ifdef __ANDROID__
+	//extra android-specific creation info:
+	XrInstanceCreateInfoAndroidKHR create_info_android{XR_TYPE_INSTANCE_CREATE_INFO_ANDROID_KHR};
+
+	create_info_android.applicationVM = platform.application_vm;
+	create_info_android.applicationActivity = platform.application_activity;
+
+	create_info.next = &create_info_android;
+#endif //__ANDROID__
 
 	std::vector< const char * > extensions{
 		#ifdef __ANDROID__
@@ -168,6 +192,7 @@ XR::XR(
 			GLint minor = 0;
 			glGetIntegerv(GL_MAJOR_VERSION, &major);
 			glGetIntegerv(GL_MINOR_VERSION, &minor);
+			std::cout << "Current OpenGL version is " << major << "." << minor << std::endl;
 			if (XR_MAKE_VERSION(major, minor, 0) < graphics_requirements.minApiVersionSupported) {
 				std::cerr << "ERROR: reported OpenGL version (" << major << "." << minor << ") is less than the minimum that OpenXR reports as supporting. (Continuing, but don't expect things to work.)" << std::endl;
 			}
@@ -287,20 +312,28 @@ XR::XR(
 	}
 
 	{ //swapchain creation
-		std::array< int64_t, 64 > formats;
-		uint32_t format_capacity = uint32_t(formats.size());
+		uint32_t format_capacity = 0;
+		//query needed format capacity:
+		if (XrResult res = xrEnumerateSwapchainFormats(session, 0, &format_capacity, nullptr);
+		    res != XR_SUCCESS) {
+			throw std::runtime_error("Failed to count swapchain formats: " + to_string(res));
+		}
+		//allocate enough space and get them:
+		std::vector< int64_t > formats(format_capacity, 0);
 		uint32_t format_count = 0;
 		if (XrResult res = xrEnumerateSwapchainFormats(session, format_capacity, &format_count, formats.data());
 		    res != XR_SUCCESS) {
-			throw std::runtime_error("Failed to get enumerate swapchain formats: " + to_string(res));
+			throw std::runtime_error("Failed to enumerate swapchain formats: " + to_string(res));
 		}
 
-		bool have_SRGB8 = false;
+		GLenum wanted_format = GL_SRGB8_ALPHA8;
+		std::string wanted_format_name = "GL_SRGB8_ALPHA8"; //for error/info messages
+		bool have_wanted_format = false;
 
 		std::cout << "Got " << format_count << " swapchain formats." << std::endl;
 		for (uint32_t f = 0; f < format_count; ++f) {
 			int64_t format = formats[f];
-			if (format == GL_SRGB8) have_SRGB8 = true;
+			if (format == wanted_format) have_wanted_format = true;
 
 			std::cout << "  [" << f << "]: ";
 			#define DO(fmt) if (format == fmt) { std::cout << #fmt; } else
@@ -315,17 +348,20 @@ XR::XR(
 			DO(GL_DEPTH_COMPONENT32F)
 			{ std::cout << " as-of-yet untranslated enum 0x" << std::hex << format << std::dec; }
 			std::cout << std::endl;
+			#undef DO
 		}
 
-		if (!have_SRGB8) {
-			throw std::runtime_error("GL_SRGB8 was not among the preferred formats; this code expects it to be.");
+		if (!have_wanted_format) {
+			throw std::runtime_error(wanted_format_name + " was not among the preferred formats; this code expects it to be.");
+		} else {
+			std::cerr << "Chose " << wanted_format_name << " for swapchain format." << std::endl;
 		}
 
 		XrSwapchainCreateInfo create_info{XR_TYPE_SWAPCHAIN_CREATE_INFO};
 
 		create_info.createFlags = 0;
 		create_info.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_SAMPLED_BIT; //NOTE: USAGE_SAMPLED_BIT was used by the ovr sdk sample; not sure if this is actually needed
-		create_info.format = GL_SRGB8;
+		create_info.format = wanted_format;
 		create_info.sampleCount = 1;
 		create_info.width = size.x;
 		create_info.height = size.y;
@@ -362,6 +398,7 @@ XR::XR(
 			view.framebuffers.resize(images.size());
 			for (uint32_t i = 0; i < view.framebuffers.size(); ++i) {
 				view.framebuffers[i].color_tex = images[i].image;
+
 				//set texture sampling state: (ovr sdk sample does this; not sure if it is needed)
 				glBindTexture(GL_TEXTURE_2D, view.framebuffers[i].color_tex);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -370,22 +407,46 @@ XR::XR(
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 				glBindTexture(GL_TEXTURE_2D, 0);
 
+				GL_ERRORS();
+
 				//allocate depth renderbuffer:
 				glGenRenderbuffers(1, &view.framebuffers[i].depth_rb);
 				glBindRenderbuffer(GL_RENDERBUFFER, view.framebuffers[i].depth_rb);
 				glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, size.x, size.y);
 				glBindRenderbuffer(GL_RENDERBUFFER, 0);
 
+				GL_ERRORS();
+
 				//allocate framebuffer:
 				glGenFramebuffers(1, &view.framebuffers[i].fb);
 				glBindFramebuffer(GL_FRAMEBUFFER, view.framebuffers[i].fb);
-				glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, view.framebuffers[i].depth_rb);
+				//glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, view.framebuffers[i].depth_rb);
 				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, view.framebuffers[i].color_tex, 0);
+
+				GL_ERRORS();
 
 				GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 
 				if (status != GL_FRAMEBUFFER_COMPLETE) {
-					throw std::runtime_error("Failed to create a complete framebuffer " + std::to_string(status));
+					#define DO(name) \
+						if (status == name) { throw std::runtime_error("Failed to create a complete framebuffer:" + std::string(#name)); } else
+
+					DO(GL_FRAMEBUFFER_UNDEFINED);
+					DO(GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT);
+					DO(GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT);
+					DO(GL_FRAMEBUFFER_UNSUPPORTED);
+					DO(GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE);
+					#ifndef __ANDROID__
+					DO(GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER);
+					DO(GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER);
+					DO(GL_FRAMEBUFFER_INCOMPLETE_LAYER_TARGETS);
+					#endif
+					{
+						std::ostringstream str;
+						str << "0x" << std::hex << status;
+						throw std::runtime_error("Failed to create a complete framebuffer: unknown status " + str.str());
+					}
+					#undef DO
 				}
 				glBindFramebuffer(GL_FRAMEBUFFER, 0);
 

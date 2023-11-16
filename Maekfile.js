@@ -156,6 +156,7 @@ maek.TARGETS = [game_exe, show_meshes_exe, show_scene_exe, ...copies];
 
 //android sdk location:
 const ANDROID_SDK = `../android-sdk`;
+const OVR_OPENXR_SDK = `../ovr-openxr-sdk`;
 
 //versions of various android sdk packages:
 const NDK = `${ANDROID_SDK}/ndk/26.1.10909125`;
@@ -179,8 +180,8 @@ const android_options = {
 		'-Wall', '-Werror',
 		'-target', 'aarch64-linux-android29',
 		`-I`, `../nest-libs/linux/glm/include`,
-		`-I`, `../ovr-openxr-sdk/OpenXR/Include`,
-		`-I`, `../ovr-openxr-sdk/3rdParty/khronos/openxr/OpenXR-SDK/include`,
+		`-I`, `${OVR_OPENXR_SDK}/OpenXR/Include`,
+		`-I`, `${OVR_OPENXR_SDK}/3rdParty/khronos/openxr/OpenXR-SDK/include`,
 		`-I`, `${NDK}/sources/android/native_app_glue/`,
 	],
 	CPPFlags: [], //extra flags for c++ compiler
@@ -188,6 +189,10 @@ const android_options = {
 		`${NDK}/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++`,
 		'-target', 'aarch64-linux-android29',
 		'-shared',
+		'-lEGL',
+		'-lGLESv3',
+		'-landroid',
+		`-L${OVR_OPENXR_SDK}/OpenXR/Libs/Android/arm64-v8a/Release/`, `-lopenxr_loader`,
 		'-Wl,-Bsymbolic', //look for global symbols inside library first
 		'-Wl,-soname,libgame.so', //specify name of output library (suggested by https://android.googlesource.com/platform/ndk/+/master/docs/BuildSystemMaintainers.md#Additional-Required-Arguments )
 	],
@@ -196,6 +201,12 @@ const android_options = {
 
 
 const android_game_objs = game_sources.map((x) => maek.CPP(x, undefined, android_options));
+
+//very much a hack:
+android_options.CPP[0] = `${NDK}/toolchains/llvm/prebuilt/linux-x86_64/bin/clang`;
+android_game_objs.push( maek.CPP(`${NDK}/sources/android/native_app_glue/android_native_app_glue.c`, `objs/android/android_native_app_glue.o`, android_options) );
+android_options.CPP[0] = `${NDK}/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++`;
+
 const android_common_objs = common_sources.map((x) => maek.CPP(x, undefined, android_options));
 
 const android_game_so = maek.LINK([...android_game_objs, ...android_common_objs], 'objs/android/apk/lib/arm64-v8a/libgame.so', android_options);
