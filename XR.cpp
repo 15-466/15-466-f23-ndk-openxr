@@ -420,7 +420,7 @@ XR::XR(
 				//allocate framebuffer:
 				glGenFramebuffers(1, &view.framebuffers[i].fb);
 				glBindFramebuffer(GL_FRAMEBUFFER, view.framebuffers[i].fb);
-				//glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, view.framebuffers[i].depth_rb);
+				glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, view.framebuffers[i].depth_rb);
 				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, view.framebuffers[i].color_tex, 0);
 
 				GL_ERRORS();
@@ -729,7 +729,9 @@ void XR::end_frame() {
 	}
 
 	XrCompositionLayerProjection layer{XR_TYPE_COMPOSITION_LAYER_PROJECTION};
-	layer.layerFlags = XR_COMPOSITION_LAYER_CORRECT_CHROMATIC_ABERRATION_BIT; //note: "planned for deprecation"
+	layer.layerFlags = XR_COMPOSITION_LAYER_CORRECT_CHROMATIC_ABERRATION_BIT //note: "planned for deprecation"
+	                 //| XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT //probably not needed for OPAQUE mode?
+	;
 	layer.space = stage;
 	layer.viewCount = projection_views.size();
 	layer.views = projection_views.data();

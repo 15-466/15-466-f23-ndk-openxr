@@ -32,6 +32,7 @@ const game_sources = [
 
 const common_sources = [
 	'data_path.cpp',
+	'asset_stream.cpp',
 	'PathFont.cpp',
 	'PathFont-font.cpp',
 	'DrawLines.cpp',
@@ -216,7 +217,13 @@ const ovr_openxr_loader_so = maek.COPY('../ovr-openxr-sdk/OpenXR/Libs/Android/ar
 const libcpp_shared_so = maek.COPY(`${NDK}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so`, 'objs/android/apk/lib/arm64-v8a/libc++_shared.so');
 
 
+//assets that are just stored in the apk as-is (no processing):
+const android_assets = [
+	maek.COPY('dist/hexapod.scene', 'objs/android/apk/assets/hexapod.scene'),
+	maek.COPY('dist/hexapod.pnct', 'objs/android/apk/assets/hexapod.pnct'),
+];
 
+//icons which are processed before being stored into the apk:
 const android_icons = [ ];
 for (const dpi of ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi']) {
 	const inFile = `android/res/mipmap-${dpi}/gp-icon.png`;
@@ -259,6 +266,7 @@ const package_apk_task = async () => {
 		AAPT2, 'link',
 		'-o', packaged_apk,
 		'-I', `${ANDROID_PLATFORM}/android.jar`,
+		'-A', 'objs/android/apk/assets',
 		'--manifest', 'android/AndroidManifest.xml',
 		...android_icons,
 		'-v' //verbose output
@@ -297,7 +305,7 @@ const package_apk_task = async () => {
 
 
 };
-package_apk_task.depends = [android_game_so, ovr_openxr_loader_so, libcpp_shared_so, ...android_icons];
+package_apk_task.depends = [android_game_so, ovr_openxr_loader_so, libcpp_shared_so, ...android_icons, ...android_assets];
 package_apk_task.label = `PACKAGE ${android_apk}`;
 maek.tasks[android_apk] = package_apk_task;
 

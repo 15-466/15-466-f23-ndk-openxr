@@ -18,6 +18,7 @@
 #endif //WINDOWS
 
 
+#ifndef __ANDROID__
 //This function gets the path to the current executable in various os-specific ways:
 static std::string get_exe_path() {
 	#if defined(_WIN32)
@@ -56,10 +57,16 @@ static std::string get_exe_path() {
 	#error "No idea what the OS is."
 	#endif
 }
+#endif
 
 std::string data_path(std::string const &suffix) {
+	#ifdef __ANDROID__
+	std::cout << "Reading from " << suffix << std::endl; //DEBUG
+	return suffix; //since assets are handled by asset manager and don't have filenames per se
+	#else
 	static std::string path = get_exe_path(); //cache result of get_exe_path()
 	return path + "/" + suffix;
+	#endif
 }
 
 /* From Rktcr; to be used eventually!

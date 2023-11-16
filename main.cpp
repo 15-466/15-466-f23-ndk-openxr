@@ -74,10 +74,48 @@ int start_logger() {
 	return 0;
 }
 
+bool resumed = false;
+
+//Based on tchow Rainbow's android/main.cpp
+// + modifications inspired by OVR OpenXR SDK's XrApp.cpp
+static void handle_cmd(android_app *app, int32_t cmd) {
+	if (cmd == APP_CMD_INIT_WINDOW) {
+		std::cout << "APP_CMD_INIT_WINDOW" << std::endl;
+		//ignore
+	} else if (cmd == APP_CMD_TERM_WINDOW) {
+		std::cout << "APP_CMD_TERM_WINDOW" << std::endl;
+		//ignore
+	} else if (cmd == APP_CMD_START) {
+		std::cout << "APP_CMD_START" << std::endl;
+		//ignore
+	} else if (cmd == APP_CMD_PAUSE) {
+		std::cout << "APP_CMD_PAUSE" << std::endl;
+		resumed = false;
+	} else if (cmd == APP_CMD_STOP) {
+		std::cout << "APP_CMD_STOP" << std::endl;
+		//ignore
+	} else if (cmd == APP_CMD_RESUME) {
+		std::cout << "APP_CMD_RESUME" << std::endl;
+		resumed = true;
+	} else if (cmd == APP_CMD_DESTROY) {
+		std::cout << "APP_CMD_DESTROY" << std::endl;
+		//ignore
+	} else {
+		//there are others! android has a lot of states :-/
+		//ignore
+	}
+}
+
+//used by asset_stream():
+ANativeActivity *activity = nullptr;
 
 //modeled on OpenXR's "hello_xr" example's main.cpp:
 //  https://github.com/KhronosGroup/OpenXR-SDK-Source/blob/main/src/tests/hello_xr/main.cpp
 void android_main(struct android_app* app) {
+	activity = app->activity;
+
+	app->onAppCmd = handle_cmd;
+	app->destroyRequested = 0;
 
 	if (start_logger() != 0) {
 		__android_log_write(ANDROID_LOG_FATAL, tag, "Failed to start log thread!");
@@ -234,8 +272,10 @@ void android_main(struct android_app* app) {
 			}
 		}
 
-		//--------------------
 		//At this point, OpenGL ES should be good to go!
+
+		//--------------------
+		// OpenXR setup (using XR helper struct -- see XR.*pp)
 
 		XR::PlatformInfo platform;
 		platform.application_vm = app->activity->vm;
@@ -244,17 +284,90 @@ void android_main(struct android_app* app) {
 		platform.egl_config = config;
 		platform.egl_context = context;
 
-		std::unique_ptr< XR > xr(new XR(platform, "gp23 OpenXR example", 1));
+		xr = new XR(platform, "gp23 OpenXR example", 1);
 
+		// At this point OpenXR stuff should be ready to use!
 
-	//....
+		//--------------------
+		//load resources
+		call_load_functions();
+		
+		//------------ create game mode + make current --------------
+		Mode::set_current(std::make_shared< PlayMode >());
+
+		//--------------------
+		//main loop
+
+		while (!app->destroyRequested && Mode::current) {
+			//based on https://developer.android.com/ndk/samples/sample_na
+			// with some modifications from XrApp.cpp from OVR OpenXR SDK
+			{ //read android events:
+				int ident = 0;
+				int events = 0;
+				struct android_poll_source *source = NULL;
+
+				bool animating = resumed || xr->session != XR_NULL_HANDLE || app->destroyRequested != 0;
+				while ((ident = ALooper_pollAll((animating ? 0 : -1), NULL, &events, (void **)&source)) >= 0) {
+					if (source != NULL) {
+						source->process(app, source);
+					}
+
+					if (app->destroyRequested != 0) {
+						break;
+					}
+				}
+			}
+
+			//read XR events:
+			bool was_running = xr->running;
+			xr->poll_events();
+			if (xr->running != was_running) {
+				if (xr->running) {
+					std::cerr << "XR is running!" << std::endl;
+				} else {
+					std::cerr << "XR is stopped." << std::endl;
+				}
+			}
+
+			if (xr->running) {
+				xr->wait_frame(); //wait for the next frame that needs to be rendered
+				xr->begin_frame(); //indicate that rendering has started on this frame (NOTE: could *probably* do this later to lower latency if head position isn't important for update)
+			}
+
+			//compute elapsed time for update:
+			float elapsed;
+			if (xr->running) {
+				static auto previous_time = xr->next_frame.display_time;
+				auto current_time = xr->next_frame.display_time;
+				elapsed = (current_time - previous_time) * 1.0e-9; //nanoseconds -> seconds
+				previous_time = current_time;
+			} else {
+				//let's just make time not pass when xr isn't running:
+				elapsed = 0.0f;
+			}
+
+			//get current mode to update:
+			Mode::current->update(std::min(0.1f, elapsed));
+			if (!Mode::current) break;
+
+			//(note: playmode has extra logic in here to deal with xr's views array)
+			Mode::current->draw(glm::uvec2(10,10)); //passing dummy drawable_size; ignored because it will just render to swapchain images instead
+
+			if (xr->running) {
+				xr->end_frame();
+			}
+
+		} //end of main loop
 
 
 
 		//----- teardown -----
 
 		//OpenXR connection:
-		xr.reset();
+		if (xr) {
+			delete xr;
+			xr = nullptr;
+		}
 
 		//EGL stuff:
 
@@ -284,6 +397,7 @@ void android_main(struct android_app* app) {
 		std::cerr << "some other error" << std::endl;
 	}
 
+	activity = nullptr;
 }
 
 #else //__ANDROID__

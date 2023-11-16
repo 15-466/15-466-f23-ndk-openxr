@@ -2,10 +2,10 @@
 
 #include "gl_errors.hpp"
 #include "read_write_chunk.hpp"
+#include "asset_stream.hpp"
 
 #include <glm/gtc/type_ptr.hpp>
 
-#include <fstream>
 
 //-------------------------
 
@@ -169,7 +169,8 @@ void Scene::draw(glm::mat4 const &world_to_clip, glm::mat4x3 const &world_to_lig
 void Scene::load(std::string const &filename,
 	std::function< void(Scene &, Transform *, std::string const &) > const &on_drawable) {
 
-	std::ifstream file(filename, std::ios::binary);
+	std::unique_ptr< std::istream > file_ptr = asset_stream(filename);
+	auto &file = *file_ptr;
 
 	std::vector< char > names;
 	read_chunk(file, "str0", &names);

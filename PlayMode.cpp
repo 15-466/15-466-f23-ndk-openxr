@@ -173,8 +173,6 @@ void PlayMode::update(float elapsed) {
 }
 
 void PlayMode::draw(glm::uvec2 const &drawable_size) {
-	//update window's camera aspect ratio for drawable:
-	camera->aspect = float(drawable_size.x) / float(drawable_size.y);
 	
 	//set up light type and position for lit_color_texture_program:
 	// TODO: consider using the Light(s) in the scene to do this
@@ -183,6 +181,12 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 	glUniform3fv(lit_color_texture_program->LIGHT_DIRECTION_vec3, 1, glm::value_ptr(glm::vec3(0.0f, 0.0f,-1.0f)));
 	glUniform3fv(lit_color_texture_program->LIGHT_ENERGY_vec3, 1, glm::value_ptr(glm::vec3(1.0f, 1.0f, 0.95f)));
 	glUseProgram(0);
+
+	//NOTE: on android, only render to swapchain images (below), not to the main window:
+	#ifndef __ANDROID__
+
+	//update window's camera aspect ratio for drawable:
+	camera->aspect = float(drawable_size.x) / float(drawable_size.y);
 
 	//main scene drawing into the window:
 	draw_helper(camera->make_projection() * glm::mat4(camera->transform->make_world_to_local()));
@@ -208,6 +212,8 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 			glm::vec3(H, 0.0f, 0.0f), glm::vec3(0.0f, H, 0.0f),
 			glm::u8vec4(0xff, 0xff, 0xff, 0x00));
 	}
+
+	#endif //__ANDROID__
 
 	//----------------------------------------------
 
@@ -251,6 +257,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 		}
 	}
 
+	GL_ERRORS();
 	
 }
 void PlayMode::draw_helper(glm::mat4 const &world_to_clip) {

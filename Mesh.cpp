@@ -1,4 +1,5 @@
 #include "Mesh.hpp"
+#include "asset_stream.hpp"
 #include "read_write_chunk.hpp"
 
 #include <glm/glm.hpp>
@@ -14,7 +15,8 @@
 MeshBuffer::MeshBuffer(std::string const &filename) {
 	glGenBuffers(1, &buffer);
 
-	std::ifstream file(filename, std::ios::binary);
+	std::unique_ptr< std::istream > file_str = asset_stream(filename);
+	std::istream &file = *file_str;
 
 	GLuint total = 0;
 
