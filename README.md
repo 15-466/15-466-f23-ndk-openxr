@@ -31,9 +31,10 @@ $ mv * latest
 Now get the things that the ovr SDK says we need (as per https://developer.oculus.com/documentation/native/android/mobile-studio-setup-android/ ):
 ```
 #from android-sdk:
-$ ./cmdline-tools/latest/bin/sdkmanager --install 'platforms;android-26'
+# android-26 should work acc'd to the OVR docs, but our Maekfile builds against 29:
+$ ./cmdline-tools/latest/bin/sdkmanager --install 'platforms;android-29'
 # "version 28.0.3 or later"; latest as of --list is build-tools;34.0.0-rc3 but:
-$ ./cmdline-tools/latest/bin/sdkmanager --install 'build-tools;28.0.3'
+$ ./cmdline-tools/latest/bin/sdkmanager --install 'build-tools;33.0.2'
 # android NDK (no version given, this is latest as of this writing):
 $ ./cmdline-tools/latest/bin/sdkmanager --install 'ndk;26.1.10909125'
 ```
