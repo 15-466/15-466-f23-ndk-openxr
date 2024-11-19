@@ -157,7 +157,7 @@ maek.TARGETS = [game_exe, show_meshes_exe, show_scene_exe, ...copies];
 
 //android sdk location:
 const ANDROID_SDK = `../android-sdk`;
-const OVR_OPENXR_SDK = `../ovr-openxr-sdk`;
+const OPENXR_SDK_ANDROID = `../openxr-sdk-android`;
 
 //versions of various android sdk packages:
 const NDK = `${ANDROID_SDK}/ndk/26.1.10909125`;
@@ -181,8 +181,7 @@ const android_options = {
 		'-Wall', '-Werror',
 		'-target', 'aarch64-linux-android29',
 		`-I`, `../nest-libs/linux/glm/include`,
-		`-I`, `${OVR_OPENXR_SDK}/OpenXR/Include`,
-		`-I`, `${OVR_OPENXR_SDK}/3rdParty/khronos/openxr/OpenXR-SDK/include`,
+		`-I`, `${OPENXR_SDK_ANDROID}/prefab/modules/headers/include`,
 		`-I`, `${NDK}/sources/android/native_app_glue/`,
 	],
 	CPPFlags: [], //extra flags for c++ compiler
@@ -193,7 +192,7 @@ const android_options = {
 		'-lEGL',
 		'-lGLESv3',
 		'-landroid',
-		`-L${OVR_OPENXR_SDK}/OpenXR/Libs/Android/arm64-v8a/Release/`, `-lopenxr_loader`,
+		`-L${OPENXR_SDK_ANDROID}/prefab/modules/openxr_loader/libs/android.arm64-v8a/`, `-lopenxr_loader`,
 		'-Wl,-Bsymbolic', //look for global symbols inside library first
 		'-Wl,-soname,libgame.so', //specify name of output library (suggested by https://android.googlesource.com/platform/ndk/+/master/docs/BuildSystemMaintainers.md#Additional-Required-Arguments )
 	],
@@ -212,7 +211,7 @@ const android_common_objs = common_sources.map((x) => maek.CPP(x, undefined, and
 
 const android_game_so = maek.LINK([...android_game_objs, ...android_common_objs], 'objs/android/apk/lib/arm64-v8a/libgame.so', android_options);
 
-const ovr_openxr_loader_so = maek.COPY('../ovr-openxr-sdk/OpenXR/Libs/Android/arm64-v8a/Release/libopenxr_loader.so', 'objs/android/apk/lib/arm64-v8a/libopenxr_loader.so');
+const ovr_openxr_loader_so = maek.COPY(`${OPENXR_SDK_ANDROID}/prefab/modules/openxr_loader/libs/android.arm64-v8a/libopenxr_loader.so`, 'objs/android/apk/lib/arm64-v8a/libopenxr_loader.so');
 
 const libcpp_shared_so = maek.COPY(`${NDK}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so`, 'objs/android/apk/lib/arm64-v8a/libc++_shared.so');
 
@@ -309,8 +308,8 @@ package_apk_task.depends = [android_game_so, ovr_openxr_loader_so, libcpp_shared
 package_apk_task.label = `PACKAGE ${android_apk}`;
 maek.tasks[android_apk] = package_apk_task;
 
-
-maek.TARGETS = [android_apk]; //DEBUG
+//override the targets with building for android:
+maek.TARGETS = [android_apk];
 
 
 //======================================================================

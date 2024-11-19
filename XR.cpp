@@ -79,7 +79,7 @@ XR::XR(
 
 	create_info.applicationInfo.engineVersion = engine_version;
 
-	create_info.applicationInfo.apiVersion = XR_CURRENT_API_VERSION;
+	create_info.applicationInfo.apiVersion = XR_API_VERSION_1_0; //XR_CURRENT_API_VERSION; <-- causes create instance to fail
 
 #ifdef __ANDROID__
 	//extra android-specific creation info:
@@ -218,7 +218,7 @@ XR::XR(
 		//getting window manager info as per example in SDL_syswm.h comment:
 		SDL_SysWMinfo info;
 		SDL_VERSION(&info.version);
-		if ( !SDL_GetWindowWMInfo(window, &info) ) {
+		if ( !SDL_GetWindowWMInfo(platform.window, &info) ) {
 			throw std::runtime_error("Failed to get window manager info from SDL: " + std::string(SDL_GetError()));
 		}
 
@@ -230,7 +230,7 @@ XR::XR(
 		}
 
 		//appears to be the case on SDL's x11 opengl driver:
-		GLXContext glx_context = reinterpret_cast< GLXContext >(context);
+		GLXContext glx_context = reinterpret_cast< GLXContext >(platform.context);
 
 		//How to get the current fbconfig; thanks to a suggestion from:
 		//  https://stackoverflow.com/questions/74104449/getting-the-current-glxfbconfig-in-glx
@@ -431,15 +431,15 @@ XR::XR(
 					#define DO(name) \
 						if (status == name) { throw std::runtime_error("Failed to create a complete framebuffer:" + std::string(#name)); } else
 
-					DO(GL_FRAMEBUFFER_UNDEFINED);
-					DO(GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT);
-					DO(GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT);
-					DO(GL_FRAMEBUFFER_UNSUPPORTED);
-					DO(GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE);
+					DO(GL_FRAMEBUFFER_UNDEFINED)
+					DO(GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT)
+					DO(GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT)
+					DO(GL_FRAMEBUFFER_UNSUPPORTED)
+					DO(GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE)
 					#ifndef __ANDROID__
-					DO(GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER);
-					DO(GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER);
-					DO(GL_FRAMEBUFFER_INCOMPLETE_LAYER_TARGETS);
+					DO(GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER)
+					DO(GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER)
+					DO(GL_FRAMEBUFFER_INCOMPLETE_LAYER_TARGETS)
 					#endif
 					{
 						std::ostringstream str;

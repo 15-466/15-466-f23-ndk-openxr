@@ -1,6 +1,7 @@
 #pragma once
 
 #include <istream>
+#include <memory>
 
 //work-around for asset loading on android where assets don't actually have filenames!
 

@@ -71,6 +71,8 @@ ShowSceneProgram::ShowSceneProgram() {
 		"		fragColor = vec4(mix(vec3(0.5), vec3(1.0), 0.5 * dot(n,l) + 0.5) * color.rgb, color.a);\n"
 		"	}\n"
 		"}\n"
+		,
+		"ShowSceneProgram"
 	);
 
 	//look up the locations of vertex attributes:

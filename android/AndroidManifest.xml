@@ -53,12 +53,16 @@
     android:label="gp23 openxr example"
     android:roundIcon="@mipmap/gp-icon">
 
+   <!-- from: https://developers.meta.com/horizon/documentation/native/android/mobile-native-manifest/ -->
+   <meta-data android:name="com.oculus.supportedDevices" android:value="quest|quest2|questpro|quest3"/>
+   <meta-data android:name="com.oculus.intent.category.VR" android:value="vr_only"/>
+
     <!-- The activity is the built-in NativeActivity framework class. -->
     <!-- launchMode is set to singleTask because there should never be multiple copies of the app running. -->
     <!-- Theme.Black.NoTitleBar.Fullscreen gives solid black instead of a (bad stereoscopic) gradient on app transition. -->
     <activity
       android:name="android.app.NativeActivity"
-      android:configChanges="screenSize|screenLayout|orientation|keyboardHidden|keyboard|navigation|uiMode|density"
+      android:configChanges="screenSize|screenLayout|orientation|keyboardHidden|keyboard|navigation|uiMode"
       android:excludeFromRecents="false"
       android:launchMode="singleTask"
       android:resizeableActivity="false"
@@ -73,7 +77,6 @@
       <intent-filter>
         <action android:name="android.intent.action.MAIN" />
         <category android:name="android.intent.category.LAUNCHER" />
-        <category android:name="com.oculus.intent.category.VR" />
         <category android:name="org.khronos.openxr.intent.category.IMMERSIVE_HMD" />
       </intent-filter>
     </activity>

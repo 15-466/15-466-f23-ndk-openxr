@@ -490,7 +490,9 @@ int main(int argc, char **argv) {
 
 	try {
 		xr = new XR(
-			window, context, //needed for SDL / desktop OpenGL mode
+			XR::PlatformInfo{
+				.window = window, .context = context, //needed for SDL / desktop OpenGL mode
+			},
 			"gp23 OpenXR example", 1); //params are application name, application version
 	} catch (std::runtime_error &e) {
 		std::cerr << "Failed to initialize OpenXR: " << e.what() << std::endl;

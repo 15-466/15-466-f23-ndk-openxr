@@ -38,28 +38,39 @@ $ ./cmdline-tools/latest/bin/sdkmanager --install 'build-tools;28.0.3'
 $ ./cmdline-tools/latest/bin/sdkmanager --install 'ndk;26.1.10909125'
 ```
 
-Also download Meta's OpenXR SDK (from https://developer.oculus.com/downloads/package/oculus-openxr-mobile-sdk/) and extract into a sibling of this directory:
+Grab a pre-built android openxr-loader from https://github.com/KhronosGroup/OpenXR-SDK-Source/releases (latest is `openxr_loader_for_android-1.1.42.aar` as of this writing):
 ```
-$ mkdir ovr-openxr-sdk
-$ cd ovr-openxr-sdk
-$ unzip ../downloads/ovr_openxr_mobile_sdk_59.0.zip #current version as of this writing
+$ mkdir openxr-sdk-android
+$ cd openxr-sdk-android/
+$ unzip ../downloads/openxr_loader_for_android-1.1.42.aar 
 ```
 
-For **desktop** VR use, grab Khronos's OpenXR loader: (see the README.md for more build info; like non-linux build instructions, required packages to install)
+OPTIONAL: For **desktop** VR use, grab Khronos's OpenXR loader: (see the README.md for more build info; like non-linux build instructions, required packages to install)
 ```
 $ git clone https://github.com/KhronosGroup/OpenXR-SDK openxr-sdk
 $ cd openxr-sdk
 $ mkdir -p build/linux
 $ cd build/linux
 $ cmake -DDYNAMIC_LOADER=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo ../..
+$ cmake --build .
+```
+(You may need to install some dependencies for this to work -- I needed to `apt install libxcb1-dev libxcb-glx0-dev`.)
+
+OPTIONAL: you could download Meta's OpenXR SDK (from https://github.com/meta-quest/Meta-OpenXR-SDK/releases/) and extract into a sibling of this directory:
+```
+$ mkdir ovr-openxr-sdk
+$ cd ovr-openxr-sdk
+$ unzip ../downloads/meta-openxr-sdk.zip #curret version is v69 as of this writing
 ```
 
-Once all of that is done you should have these three as siblings:
+Once all of that is done you should have these as siblings:
 ```
 15466-f23-ndk-openxr #this folder
 android-sdk #android sdk, tools, etc
-ovr-openxr-sdk #Meta's OpenXR SDK stuff
-openxr-sdk #Knrono's OpenXR SDK (optional; for desktop use)
+openxr-sdk-android #pre-built openxr loader for android
+#optionally:
+ovr-openxr-sdk #Meta's OpenXR SDK stuff (optional)
+openxr-sdk #Khronos' OpenXR SDK (optional; for desktop use)
 ```
 
 ### SteamVR Linux Notes
